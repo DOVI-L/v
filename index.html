@@ -810,21 +810,29 @@
     </button>
 </div>
 
-<!-- סקריפט עזר קטן לפתיחת החלון - הוסף את זה מייד אחרי הכפתור -->
+<!-- החלף את פונקציית toggleChatWindow הקיימת ב-index.html בזו: -->
 <script>
     function toggleChatWindow() {
         const w = document.getElementById('ai-chat-window');
         if (w) {
-            w.classList.toggle('hidden');
-            w.classList.toggle('flex'); // מוודא שהחלון מקבל תצוגת Flex כשהוא נפתח
+            // בדיקה האם החלון מוסתר כרגע (בודק גם class וגם style וגם computed)
+            const isHidden = w.classList.contains('hidden') || window.getComputedStyle(w).display === 'none';
             
-            // אם נפתח, נשים פוקוס בשדה הטקסט
-            if (!w.classList.contains('hidden')) {
-                setTimeout(() => document.getElementById('ai-input').focus(), 100);
+            if (isHidden) {
+                // הצגה
+                w.classList.remove('hidden');
+                w.style.display = 'flex'; // דריסה כוחנית של CSS
+                setTimeout(() => {
+                    const input = document.getElementById('ai-input');
+                    if(input) input.focus();
+                }, 100);
+            } else {
+                // הסתרה
+                w.classList.add('hidden');
+                w.style.display = 'none';
             }
         } else {
-            console.error("AI Chat window element not found!");
-            alert("שגיאה: חלונית הצ'אט לא נמצאה בדף.");
+            console.error("Chat window not found");
         }
     }
 </script>
@@ -863,4 +871,5 @@
     <script src="main.js"></script>
 
 </body>
+
 </html>
