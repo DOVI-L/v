@@ -810,33 +810,53 @@
     </button>
 </div>
 
-<!-- החלף את פונקציית toggleChatWindow הקיימת ב-index.html בזו: -->
+<!-- הדבק את זה בסוף index.html לפני </body> -->
 <script>
-    function toggleChatWindow() {
+    // דריסה של הפונקציה הקיימת עם גרסה אלימה יותר
+    window.toggleChatWindow = function() {
+        console.log("מנסה לפתוח בכוח...");
         const w = document.getElementById('ai-chat-window');
-        if (w) {
-            // בדיקה האם החלון מוסתר כרגע (בודק גם class וגם style וגם computed)
-            const isHidden = w.classList.contains('hidden') || window.getComputedStyle(w).display === 'none';
-            
-            if (isHidden) {
-                // הצגה
-                w.classList.remove('hidden');
-                w.style.display = 'flex'; // דריסה כוחנית של CSS
-                setTimeout(() => {
-                    const input = document.getElementById('ai-input');
-                    if(input) input.focus();
-                }, 100);
-            } else {
-                // הסתרה
-                w.classList.add('hidden');
-                w.style.display = 'none';
-            }
-        } else {
-            console.error("Chat window not found");
+        
+        if (!w) {
+            alert("שגיאה חמורה: האלמנט ai-chat-window לא נמצא ב-HTML!");
+            return;
         }
-    }
-</script>
 
+        // בדיקה אם החלון מוסתר כרגע
+        // אנחנו בודקים גם class וגם style ישיר
+        const isHidden = w.classList.contains('hidden') || 
+                         w.style.display === 'none' || 
+                         getComputedStyle(w).display === 'none';
+
+        if (isHidden) {
+            // פעולות לפתיחה
+            w.classList.remove('hidden');
+            w.classList.add('flex'); // חשוב ל-Tailwind
+            
+            // שימוש ב-style ישיר כדי לעקוף כל CSS חיצוני
+            w.style.display = 'flex !important'; 
+            w.style.setProperty('display', 'flex', 'important');
+            w.style.zIndex = '999999'; // שיהיה מעל הכל
+            w.style.opacity = '1';
+            w.style.visibility = 'visible';
+            
+            // פוקוס לשדה הטקסט
+            setTimeout(() => {
+                const input = document.getElementById('ai-input');
+                if(input) input.focus();
+            }, 100);
+            
+            console.log("החלון נפתח!");
+        } else {
+            // פעולות לסגירה
+            w.classList.add('hidden');
+            w.classList.remove('flex');
+            w.style.display = 'none';
+            w.style.setProperty('display', 'none', 'important');
+            console.log("החלון נסגר.");
+        }
+    };
+</script>
     <!-- Modal: Generic Form -->
     <div id="modal-form" class="fixed inset-0 z-50 bg-black/60 hidden-screen flex items-center justify-center backdrop-blur-sm transition-all duration-300">
         <div class="bg-white rounded-2xl shadow-2xl w-[550px] max-w-[90vw] overflow-hidden flex flex-col max-h-[90vh] scale-100 transition-transform">
@@ -873,3 +893,4 @@
 </body>
 
 </html>
+
