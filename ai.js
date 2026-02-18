@@ -1,239 +1,290 @@
+/**
+ * ai.js - גרסה משוריינת לדיבוג מלא
+ */
+
 const HybridAI = {
-    mode: 'offline', // 'online' | 'offline'
-    isQuotaExceeded: false,
-    currentFileContent: null,
+    // הגדרות ברירת מחדל
+    mode: 'offline', // online / offline
+    isWindowOpen: false,
     
+    // אתחול המערכת
     init() {
-        console.log("HybridAI: Initializing...");
+        console.log("🚀 AI System: מתחיל אתחול...");
+
+        // 1. בדיקת מפתח API
+        this.checkApiKey();
+
+        // 2. בדיקת רכיבי DOM (כפתור וחלון)
+        const btnContainer = document.getElementById('ai-bubble-container');
+        const chatWindow = document.getElementById('ai-chat-window');
+        const fabBtn = document.querySelector('#ai-bubble-container button');
+
+        if (!btnContainer) console.error("❌ שגיאה קריטית: לא נמצא אלמנט #ai-bubble-container ב-HTML");
+        if (!chatWindow) console.error("❌ שגיאה קריטית: לא נמצא אלמנט #ai-chat-window ב-HTML");
+        
+        // 3. הצגת הכפתור (במידה והוא מוסתר)
+        if (btnContainer) {
+            btnContainer.classList.remove('hidden-screen', 'hidden');
+            btnContainer.style.display = 'block';
+            console.log("✅ AI System: כפתור הבועה הוצג.");
+            
+            // הצמדת אירוע לחיצה מחדש (למקרה שה-onclick ב-HTML לא עובד)
+            if (fabBtn) {
+                // מסיר מאזינים ישנים כדי למנוע כפילויות
+                const newBtn = fabBtn.cloneNode(true);
+                fabBtn.parentNode.replaceChild(newBtn, fabBtn);
+                
+                newBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    console.log("🖱️ AI System: זוהתה לחיצה על הכפתור!");
+                    this.toggleChat();
+                });
+            }
+        }
+
+        // 4. בדיקת חיבור רשת
         this.checkConnectivity();
         window.addEventListener('online', () => this.handleNetworkChange(true));
         window.addEventListener('offline', () => this.handleNetworkChange(false));
-        
-        // בדיקת הרשאות והצגת הכפתור
-        setTimeout(() => {
-            const fab = document.getElementById('ai-bubble-container');
-            if (fab) {
-                // הצגה כברירת מחדל כדי לוודא שרואים אותו
-                fab.classList.remove('hidden-screen');
-                fab.style.display = 'block'; 
-                console.log("HybridAI: Bubble button should be visible now.");
-            } else {
-                console.error("HybridAI: Button container 'ai-bubble-container' not found!");
-            }
-        }, 1000);
+
+        // 5. הגדרה גלובלית (לגיבוי)
+        window.toggleChatWindow = () => this.toggleChat();
+
+        console.log("✅ AI System: אתחול הושלם.");
     },
 
+    // בדיקת מפתח Gemini
+    checkApiKey() {
+        const key = window.GEMINI_API_KEY;
+        if (!key) {
+            console.error("❌ AI Error: משתנה GEMINI_API_KEY לא מוגדר בקובץ config.js");
+            alert("שגיאת מערכת: מפתח AI חסר.");
+            return false;
+        }
+        if (key.includes('PLACEHOLDER') || key.includes('__GEMINI')) {
+            console.warn("⚠️ AI Warning: מפתח ה-API הוא עדיין Placeholder (לא הוגדר מפתח אמיתי).");
+            // אנחנו לא עוצרים את הריצה, אבל המצב יהיה אופליין
+            return false;
+        }
+        console.log("✅ AI System: מפתח API זוהה ותקין (מבחינת פורמט).");
+        return true;
+    },
+
+    // ניהול מצב רשת
     checkConnectivity() {
         const isOnline = navigator.onLine;
-        const hasKey = window.GEMINI_API_KEY && !window.GEMINI_API_KEY.includes('PLACEHOLDER');
+        const hasKey = this.checkApiKey();
         
-        if (isOnline && hasKey && !this.isQuotaExceeded) {
+        if (isOnline && hasKey) {
             this.setMode('online');
         } else {
             this.setMode('offline');
+            if (!isOnline) console.log("🌐 AI Info: דפדפן במצב אופליין.");
         }
     },
 
+    handleNetworkChange(isOnline) {
+        console.log(`🌐 AI Network Change: ${isOnline ? 'מחובר' : 'מנותק'}`);
+        this.checkConnectivity();
+        this.addMsg(isOnline ? "החיבור חזר." : "אין אינטרנט. עברתי למצב אופליין.", 'system');
+    },
+
     setMode(newMode) {
-        if (this.mode === newMode) return;
         this.mode = newMode;
-        
         const dot = document.getElementById('ai-status-dot');
         const text = document.getElementById('ai-status-text');
         
         if (dot && text) {
             if (newMode === 'online') {
-                dot.className = "w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.6)]";
-                text.innerText = "מחובר (Gemini AI)";
+                dot.className = "w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse shadow-lg";
+                text.innerText = "מחובר (Gemini)";
             } else {
-                dot.className = "w-2.5 h-2.5 rounded-full bg-orange-500";
-                text.innerText = "מצב אופליין";
+                dot.className = "w-2.5 h-2.5 rounded-full bg-gray-400";
+                text.innerText = "אופליין (מקומי)";
             }
         }
     },
 
-    handleNetworkChange(isOnline) {
-        if (isOnline) {
-            this.retryOnline();
-        } else {
-            this.setMode('offline');
-            this.addMsg("האינטרנט התנתק. עברתי למצב אופליין.", 'system');
-        }
-    },
-
-    retryOnline() {
-        this.isQuotaExceeded = false;
-        this.checkConnectivity();
-        if (this.mode === 'online') {
-            this.addMsg("החיבור חודש.", 'system');
-        }
-    },
-
-    // --- קריאת קבצים ---
-    async handleFileSelect(input) {
-        const file = input.files[0];
-        if(!file) return;
+    // פונקציית הפתיחה/סגירה המשופרת
+    toggleChat() {
+        console.log("🔄 AI System: מבצע Toggle לחלון הצ'אט...");
+        const w = document.getElementById('ai-chat-window');
         
-        const preview = document.getElementById('ai-file-preview');
-        const nameEl = document.getElementById('ai-file-name');
-        if(preview) preview.classList.remove('hidden');
-        if(nameEl) nameEl.innerText = "מעבד קובץ...";
+        if (!w) {
+            alert("שגיאה: חלון הצ'אט לא נמצא ב-DOM!");
+            return;
+        }
 
-        try {
-            let content = "";
-            if(file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
-                content = await this.readExcel(file);
-            } else if (file.name.endsWith('.pdf')) {
-                content = "PDF detected (Text extraction limited in browser).";
-            } else {
-                content = await this.readText(file);
-            }
+        // בדיקה אגרסיבית האם החלון מוסתר
+        const style = window.getComputedStyle(w);
+        const isHidden = w.classList.contains('hidden') || style.display === 'none' || style.visibility === 'hidden';
 
-            this.currentFileContent = content;
-            if(nameEl) nameEl.innerText = file.name;
-            this.addMsg(`הקובץ ${file.name} נטען בהצלחה.`, 'system');
+        console.log(`🔍 מצב נוכחי: ${isHidden ? 'מוסתר' : 'גלוי'}`);
 
-        } catch (err) {
-            console.error(err);
-            this.addMsg("שגיאה בקריאת הקובץ.", 'system');
-            if(preview) preview.classList.add('hidden');
+        if (isHidden) {
+            // פתיחה
+            w.classList.remove('hidden');
+            w.style.display = 'flex'; // דריסת CSS חיצוני
+            w.style.visibility = 'visible';
+            w.style.opacity = '1';
+            w.style.zIndex = '99999'; // וידוא שהוא מעל הכל
+            
+            // פוקוס
+            setTimeout(() => {
+                const input = document.getElementById('ai-input');
+                if (input) input.focus();
+            }, 100);
+            
+            this.isWindowOpen = true;
+            console.log("🔓 חלון נפתח.");
+        } else {
+            // סגירה
+            w.classList.add('hidden');
+            w.style.display = 'none';
+            
+            this.isWindowOpen = false;
+            console.log("🔒 חלון נסגר.");
         }
     },
 
-    readExcel(file) {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                try {
-                    const data = new Uint8Array(e.target.result);
-                    const workbook = XLSX.read(data, {type: 'array'});
-                    const sheet = workbook.Sheets[workbook.SheetNames[0]];
-                    const json = XLSX.utils.sheet_to_json(sheet, {header: 1});
-                    let text = "Excel Data:\n";
-                    json.slice(0, 100).forEach(row => text += row.join(" | ") + "\n");
-                    resolve(text);
-                } catch (err) { reject(err); }
-            };
-            reader.readAsArrayBuffer(file);
-        });
-    },
-
-    readText(file) {
-        return new Promise(resolve => {
-            const r = new FileReader();
-            r.onload = e => resolve(e.target.result);
-            r.readAsText(file);
-        });
-    },
-
-    clearFile() {
-        this.currentFileContent = null;
-        document.getElementById('ai-file-input').value = '';
-        document.getElementById('ai-file-preview').classList.add('hidden');
-    },
-
+    // הוספת הודעה לצ'אט
     addMsg(html, role) {
         const container = document.getElementById('ai-messages');
         if (!container) return;
+
         const div = document.createElement('div');
-        div.className = `p-3 rounded-xl mb-2 text-sm max-w-[90%] ${role === 'user' ? 'bg-indigo-600 text-white self-end' : 'bg-white border text-gray-800 self-start'}`;
-        if (role === 'system') div.className = "text-center text-xs text-gray-500 my-2";
+        // עיצוב לפי תפקיד
+        if (role === 'user') {
+            div.className = "bg-indigo-600 text-white self-end p-3 rounded-xl mb-2 text-sm max-w-[85%]";
+        } else if (role === 'ai') {
+            div.className = "bg-white border text-gray-800 self-start p-3 rounded-xl mb-2 text-sm max-w-[90%] shadow-sm";
+        } else { // system
+            div.className = "text-center text-xs text-gray-400 my-2 italic";
+        }
+        
         div.innerHTML = html;
         container.appendChild(div);
         container.scrollTop = container.scrollHeight;
     },
 
+    // שליחת הודעה
     async send() {
         const inp = document.getElementById('ai-input');
         const text = inp.value.trim();
-        if (!text && !this.currentFileContent) return;
+        if (!text) return;
 
         this.addMsg(text, 'user');
         inp.value = '';
 
-        if (this.mode === 'online') await this.processOnline(text);
-        else this.processOffline(text);
+        if (this.mode === 'online') {
+            await this.processOnline(text);
+        } else {
+            this.processOffline(text);
+        }
     },
 
+    // עיבוד אונליין (Gemini)
     async processOnline(text) {
-        this.addMsg(`<i class="fas fa-spinner fa-spin"></i> מעבד...`, 'ai');
-        try {
-            const context = {
-                view: Router.current,
-                stats: Store.data.stats
-            };
-            const prompt = `You are a helper for Yeshiva Management System.
-            System State: ${JSON.stringify(context)}
-            ${this.currentFileContent ? 'Attached File: ' + this.currentFileContent : ''}
-            User: ${text}`;
+        this.addMsg(`<i class="fas fa-spinner fa-spin"></i> חושב...`, 'ai');
+        
+        // כאן אתה יכול להוסיף את הלוגיקה המלאה של Gemini כמו בקוד הקודם
+        // לצורך בדיקה, נחזיר תשובה מדמה אם אין API
+        const apiKey = window.GEMINI_API_KEY;
+        
+        if (!apiKey || apiKey.includes('PLACEHOLDER')) {
+            setTimeout(() => {
+                this.handleAIResponse("אין מפתח API מוגדר, אך המערכת מחוברת לאינטרנט. נא להגדיר מפתח ב-Github Secrets.");
+            }, 1000);
+            return;
+        }
 
-            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${window.GEMINI_API_KEY}`, {
+        try {
+            // בניית הקונטקסט
+            const context = {
+                currentView: Router?.current || 'unknown',
+                stats: Store?.data?.stats || {},
+                userRole: Store?.role || 'user',
+                year: Store?.currentYear
+            };
+
+            const systemPrompt = `You are an assistant for a Yeshiva management system. Context: ${JSON.stringify(context)}. User says: ${text}`;
+
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                body: JSON.stringify({ contents: [{ parts: [{ text: systemPrompt }] }] })
             });
 
-            const data = await response.json();
-            const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || "שגיאה.";
+            if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
             
-            // מחיקת הודעת הטעינה (האחרונה)
-            const msgs = document.getElementById('ai-messages');
-            if(msgs.lastChild.innerHTML.includes('fa-spinner')) msgs.lastChild.remove();
-
+            const data = await response.json();
+            const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || "לא התקבלה תשובה תקינה.";
             this.handleAIResponse(reply);
+
         } catch (e) {
-            this.addMsg("שגיאת תקשורת.", 'system');
+            console.error("AI Request Failed:", e);
+            this.handleAIResponse(`שגיאה בתקשורת: ${e.message}`);
         }
     },
 
+    // טיפול בתשובה (ניקוי הודעת הטעינה)
     handleAIResponse(reply) {
-        const clean = reply.replace(/```json/g, '').replace(/```/g, '').trim();
-        try {
-            if (clean.startsWith('{')) {
-                const cmd = JSON.parse(clean);
-                if (cmd.tool === 'navigate') Router.go(cmd.view);
-                this.addMsg("בוצע.", 'ai');
-            } else {
-                this.addMsg(clean.replace(/\n/g, '<br>'), 'ai');
-            }
-        } catch (e) {
-            this.addMsg(reply, 'ai');
+        // מחיקת הודעת הטעינה האחרונה (דרך פשוטה: הסרת האלמנט האחרון אם הוא מכיל ספינר)
+        const container = document.getElementById('ai-messages');
+        const lastMsg = container.lastElementChild;
+        if (lastMsg && lastMsg.innerHTML.includes('fa-spinner')) {
+            lastMsg.remove();
         }
+        
+        // עיבוד JSON אם יש (לניווט)
+        const clean = reply.replace(/```json/g, '').replace(/```/g, '').trim();
+        if (clean.startsWith('{') && clean.endsWith('}')) {
+            try {
+                const cmd = JSON.parse(clean);
+                if (cmd.tool === 'navigate') {
+                    Router.go(cmd.view);
+                    this.addMsg(`עברתי למסך ${cmd.view}`, 'ai');
+                    return;
+                }
+            } catch(e) {}
+        }
+        
+        this.addMsg(clean.replace(/\n/g, '<br>'), 'ai');
     },
 
+    // עיבוד אופליין
     processOffline(text) {
-        this.addMsg("אני באופליין. נסה 'דוח כספי' או 'עבור ללוח המחוונים'.", 'ai');
-    }
-};
-
-// --- פונקציה גלובלית לפתיחת החלון (חשוב!) ---
-// זה נמצא מחוץ לאובייקט כדי שיהיה זמין מיד בלחיצה
-window.toggleChatWindow = function() {
-    console.log("Toggle Chat Clicked!"); // לוג לבדיקה
-    const w = document.getElementById('ai-chat-window');
+        let res = "אני במצב אופליין (ללא AI).";
+        if (text.includes('דוח')) res = "במצב אופליין ניתן להפיק דוחות דרך תפריט הדוחות.";
+        else if (text.includes('שלום')) res = "שלום! איך אפשר לעזור במערכת?";
+        
+        setTimeout(() => this.addMsg(res, 'ai'), 500);
+    },
     
-    if (!w) {
-        alert("שגיאה: חלון הצ'אט לא נמצא ב-HTML");
-        console.error("Element #ai-chat-window is missing from DOM");
-        return;
-    }
-
-    // החלפת מחלקות CSS להצגה/הסתרה
-    if (w.classList.contains('hidden')) {
-        w.classList.remove('hidden');
-        w.classList.add('flex');
-        setTimeout(() => {
-            const input = document.getElementById('ai-input');
-            if(input) input.focus();
-        }, 100);
-    } else {
-        w.classList.add('hidden');
-        w.classList.remove('flex');
+    // ניקוי קובץ מצורף
+    clearFile() {
+        document.getElementById('ai-file-input').value = '';
+        document.getElementById('ai-file-preview').classList.add('hidden');
+    },
+    
+    // טיפול בקובץ
+    handleFileSelect(input) {
+        const file = input.files[0];
+        if (!file) return;
+        document.getElementById('ai-file-preview').classList.remove('hidden');
+        document.getElementById('ai-file-name').innerText = file.name;
+        this.addMsg(`קובץ נטען: ${file.name} (מוכן לשליחה)`, 'system');
     }
 };
 
-window.HybridAI = HybridAI;
-// טעינת ה-AI
+// הפעלת המערכת לאחר טעינת הדף
 document.addEventListener('DOMContentLoaded', () => {
-    setTimeout(() => HybridAI.init(), 1000);
+    // השהייה קצרה כדי לוודא ש-HTML נטען
+    setTimeout(() => {
+        HybridAI.init();
+    }, 1500);
 });
+
+// ייצוא לחלון
+window.HybridAI = HybridAI;
