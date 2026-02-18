@@ -1,19 +1,31 @@
 const Settings = {
-    init() {
-        this.renderFieldsEditor();
-        this.renderGoals();
-        this.renderStudentRewards();
-        this.renderBonusTiers();
-        this.renderVouchers();
+ init() {
+        // וידוא שהאלמנטים קיימים לפני שמנסים לשנות אותם
+        if(document.getElementById('settings-active-fields')) {
+            this.renderFieldsEditor();
+            this.renderGoals();
+            this.renderStudentRewards();
+            this.renderBonusTiers();
+            this.renderVouchers();
+        }
+
         if(Store.data.config) {
-            document.getElementById('conf-global-goal').value = Store.data.config.globalGoal || '';
-            document.getElementById('conf-base-student-goal').value = Store.data.config.baseStudentGoal || '';
-            document.getElementById('conf-enable-ai').checked = Store.data.config.enableAI || false;
+            const elGoal = document.getElementById('conf-global-goal');
+            if(elGoal) elGoal.value = Store.data.config.globalGoal || '';
+            
+            const elBase = document.getElementById('conf-base-student-goal');
+            if(elBase) elBase.value = Store.data.config.baseStudentGoal || '';
+            
+            const elAI = document.getElementById('conf-enable-ai');
+            if(elAI) elAI.checked = Store.data.config.enableAI || false;
             
             const gd = Store.data.config.groupDiscounts || {};
-            document.getElementById('conf-disc-night14').value = gd.night14 || 0;
-            document.getElementById('conf-disc-day14').value = gd.day14 || 0;
-            document.getElementById('conf-disc-day15').value = gd.day15 || 0;
+            const elD1 = document.getElementById('conf-disc-night14');
+            if(elD1) elD1.value = gd.night14 || 0;
+            const elD2 = document.getElementById('conf-disc-day14');
+            if(elD2) elD2.value = gd.day14 || 0;
+            const elD3 = document.getElementById('conf-disc-day15');
+            if(elD3) elD3.value = gd.day15 || 0;
         }
     },
     save(key, val) { OfflineManager.write(`settings/${key}`, parseInt(val)); Notify.show('הגדרה נשמרה', 'success'); },

@@ -1,5 +1,5 @@
 const HybridAI = {
-    mode: 'offline', // 'online' | 'offline'
+    mode: 'offline',
     isQuotaExceeded: false,
     currentFileContent: null,
     
@@ -8,97 +8,148 @@ const HybridAI = {
         window.addEventListener('online', () => this.handleNetworkChange(true));
         window.addEventListener('offline', () => this.handleNetworkChange(false));
         
-        // בדוק אם יש מפתח אונליין תקין
-        const hasKey = window.GEMINI_API_KEY && !window.GEMINI_API_KEY.includes('PLACEHOLDER');
-        if (!hasKey) {
-            this.addMsg("הערה: לא הוזרק מפתח API מהשרת. ה-AI יעבוד במצב אופליין בלבד.", 'system');
-        } else {
-            console.log("HybridAI: API Key detected.");
-        }
+        // הופך את פונקציית הפתיחה לזמינה גלובלית עבור הכפתור ב-HTML
+        window.toggleChatWindow = () => {
+            const w = document.getElementById('ai-chat-window');
+            if (w) {
+                w.classList.toggle('hidden');
+                w.classList.toggle('flex');
+                if (!w.classList.contains('hidden')) {
+                    setTimeout(() => document.getElementById('ai-input').focus(), 100);
+                }
+            }
+        };
+
+        // בדיקת הרשאות להצגת הבועה
+        setTimeout(() => {
+            const fab = document.getElementById('ai-fab-container') || document.getElementById('ai-bubble-container');
+            // מציג רק אם המשתמש מחובר והוא אדמין (או אם רוצים שיהיה פתוח תמיד, מחק את התנאי)
+            if (fab) {
+                if (window.Store && Store.user && Store.role === 'admin') {
+                    fab.classList.remove('hidden-screen');
+                    fab.style.display = 'block';
+                } else {
+                    fab.classList.add('hidden-screen');
+                    fab.style.display = 'none';
+                }
+            }
+        }, 2000); // המתנה לטעינת Store
     },
 
     checkConnectivity() {
         const isOnline = navigator.onLine;
         const hasKey = window.GEMINI_API_KEY && !window.GEMINI_API_KEY.includes('PLACEHOLDER');
-        
-        if (isOnline && hasKey && !this.isQuotaExceeded) {
-            this.setMode('online');
-        } else {
-            this.setMode('offline');
-        }
+        this.setMode((isOnline && hasKey && !this.isQuotaExceeded) ? 'online' : 'offline');
     },
 
     setMode(newMode) {
         if (this.mode === newMode) return;
         this.mode = newMode;
-        
         const dot = document.getElementById('ai-status-dot');
         const text = document.getElementById('ai-status-text');
-        
         if (dot && text) {
             if (newMode === 'online') {
-                dot.className = "w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.6)]";
-                text.innerText = "מחובר (Gemini AI)";
+                dot.className = "w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse shadow-green-500/50 shadow-lg";
+                text.innerText = "מחובר (Gemini)";
             } else {
-                dot.className = "w-2.5 h-2.5 rounded-full bg-orange-500";
-                const reason = !navigator.onLine ? "אין אינטרנט" : (this.isQuotaExceeded ? "חריגת מכסה" : "מצב מכני");
-                text.innerText = `אופליין (${reason})`;
+                dot.className = "w-2.5 h-2.5 rounded-full bg-gray-400";
+                text.innerText = "אופליין";
             }
         }
     },
 
     handleNetworkChange(isOnline) {
-        if (isOnline) {
-            this.addMsg(`
-                <div class="flex justify-between items-center bg-green-50 p-2 rounded border border-green-200">
-                    <span><i class="fas fa-wifi text-green-600"></i> האינטרנט חזר!</span>
-                    <button onclick="HybridAI.retryOnline()" class="text-xs bg-green-600 text-white px-3 py-1 rounded font-bold hover:bg-green-700 transition">התחבר מחדש</button>
-                </div>
-            `, 'system');
-        } else {
-            this.setMode('offline');
-            this.addMsg("החיבור נותק. עברתי למצב אופליין.", 'system');
-        }
-    },
-
-    retryOnline() {
-        this.isQuotaExceeded = false;
         this.checkConnectivity();
-        if (this.mode === 'online') {
-            this.addMsg("התחברתי בהצלחה ל-Gemini.", 'system');
-        } else {
-            this.addMsg("עדיין לא ניתן להתחבר (בדוק מפתח API).", 'system');
-        }
+        if(isOnline) this.addMsg("החיבור חזר.", 'system');
+        else this.addMsg("אין אינטרנט. עברתי למצב אופליין.", 'system');
     },
 
-    handleFileSelect(input) {
+    // --- טיפול בקבצים (Excel/CSV/Text) ---
+    async handleFileSelect(input) {
         const file = input.files[0];
         if(!file) return;
         
-        document.getElementById('ai-file-preview').classList.remove('hidden');
-        document.getElementById('ai-file-name').innerText = file.name;
+        const preview = document.getElementById('ai-file-preview');
+        const nameEl = document.getElementById('ai-file-name');
+        if(preview) preview.classList.remove('hidden');
+        if(nameEl) nameEl.innerText = "מעבד קובץ...";
 
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            if(file.name.endsWith('xlsx') || file.name.endsWith('xls')) {
-                try {
-                    const workbook = XLSX.read(e.target.result, {type: 'binary'});
-                    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-                    this.currentFileContent = XLSX.utils.sheet_to_csv(firstSheet);
-                    this.addMsg(`קובץ נטען. ניתן לשאול שאלות על תוכנו.`, 'system');
-                } catch(err) {
-                    this.addMsg("שגיאה בקריאת קובץ אקסל.", 'system');
-                }
+        try {
+            let content = "";
+            
+            if(file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+                content = await this.readExcel(file);
+            } else if (file.name.endsWith('.pdf')) {
+                content = "זיהיתי PDF. שים לב: המערכת כרגע לא קוראת תוכן מתוך PDF סרוק, אלא רק טקסט חי.";
             } else {
-                this.currentFileContent = e.target.result;
+                content = await this.readText(file);
             }
-        };
-        
-        if(file.name.endsWith('xlsx') || file.name.endsWith('xls')) {
-            reader.readAsBinaryString(file);
-        } else {
-            reader.readAsText(file);
+
+            // בדיקת כפילויות מול ה-Store
+            const duplicates = this.checkDuplicates(content);
+            
+            this.currentFileContent = content;
+            if(nameEl) nameEl.innerText = file.name;
+            
+            let msg = `הקובץ נטען.`;
+            if (duplicates.length > 0) {
+                msg += `<br><strong style="color:red">אזהרה:</strong> זיהיתי ${duplicates.length} שמות בקובץ שכבר קיימים במערכת (כגון: ${duplicates[0]}).<br>אני אזהר לא לדרוס נתונים אלא אם תבקש במפורש.`;
+            } else {
+                msg += `<br>לא נמצאו כפילויות מול המאגר הקיים.`;
+            }
+            
+            this.addMsg(msg, 'system');
+
+        } catch (err) {
+            console.error(err);
+            this.addMsg("שגיאה בקריאת הקובץ.", 'system');
+            if(preview) preview.classList.add('hidden');
         }
+    },
+
+    readExcel(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, {type: 'array'});
+                    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const json = XLSX.utils.sheet_to_json(sheet, {header: 1});
+                    
+                    // המרה לטקסט שה-AI יכול לקרוא
+                    let text = "Excel Data:\n";
+                    json.slice(0, 400).forEach(row => text += row.join(" | ") + "\n");
+                    resolve(text);
+                } catch (err) { reject(err); }
+            };
+            reader.readAsArrayBuffer(file);
+        });
+    },
+
+    readText(file) {
+        return new Promise(resolve => {
+            const r = new FileReader();
+            r.onload = e => resolve(e.target.result);
+            r.readAsText(file);
+        });
+    },
+
+    checkDuplicates(text) {
+        const dups = [];
+        if (!window.Store || !Store.data) return [];
+        
+        const allNames = [
+            ...Object.values(Store.data.students || {}).map(s => s.name),
+            ...Object.values(Store.data.donors || {}).map(d => d.name)
+        ];
+
+        allNames.forEach(name => {
+            if (name && name.length > 3 && text.includes(name)) {
+                if(!dups.includes(name)) dups.push(name);
+            }
+        });
+        return dups;
     },
 
     clearFile() {
@@ -110,13 +161,9 @@ const HybridAI = {
     addMsg(html, role) {
         const container = document.getElementById('ai-messages');
         const div = document.createElement('div');
+        div.className = `p-3 rounded-xl mb-2 text-sm max-w-[90%] ${role === 'user' ? 'bg-indigo-600 text-white self-end' : 'bg-white border text-gray-800 self-start'}`;
+        if (role === 'system') div.className = "text-center text-xs text-gray-500 my-2";
         
-        let styleClass = "p-3 rounded-xl mb-2 text-sm max-w-[90%] shadow-sm animate-fade-in ";
-        if (role === 'user') styleClass += "bg-indigo-600 text-white self-end rounded-br-none";
-        else if (role === 'ai') styleClass += "bg-white text-slate-800 self-start border border-gray-200 rounded-bl-none";
-        else styleClass += "bg-gray-100 text-gray-600 self-center text-xs w-full text-center border border-gray-200";
-
-        div.className = styleClass;
         div.innerHTML = html;
         container.appendChild(div);
         container.scrollTop = container.scrollHeight;
@@ -125,112 +172,77 @@ const HybridAI = {
     async send() {
         const inp = document.getElementById('ai-input');
         const text = inp.value.trim();
-        
         if (!text && !this.currentFileContent) return;
 
-        let userDisplay = text;
-        if (this.currentFileContent) userDisplay += ' <span class="text-xs bg-white/20 px-1 rounded inline-flex items-center gap-1"><i class="fas fa-paperclip"></i> קובץ</span>';
-        this.addMsg(userDisplay, 'user');
-        
+        this.addMsg(text, 'user');
         inp.value = '';
 
-        if (this.mode === 'online') {
-            await this.processOnline(text);
-        } else {
-            this.processOffline(text);
-        }
+        if (this.mode === 'online') await this.processOnline(text);
+        else this.processOffline(text);
     },
 
     async processOnline(text) {
         const loadingId = 'loading-' + Date.now();
-        this.addMsg(`<div id="${loadingId}" class="flex items-center gap-2"><i class="fas fa-circle-notch fa-spin text-indigo-500"></i> חושב...</div>`, 'ai');
+        this.addMsg(`<i class="fas fa-spinner fa-spin"></i> חושב...`, 'ai');
 
         try {
-            const stats = JSON.stringify(Store.data.stats);
-            let context = `Current View: ${Router.current}. User Role: ${Store.role}. Stats: ${stats}.`;
-            
-            if (this.currentFileContent) {
-                context += `\n\nATTACHED FILE CONTENT (Truncated):\n${this.currentFileContent.substring(0, 10000)}\n[End of File]`;
-                this.clearFile();
-            }
+            // Context על המערכת
+            const context = {
+                currentView: Router.current,
+                stats: Store.data.stats,
+                userRole: Store.role,
+                currentYear: Store.currentYear
+            };
 
             const systemPrompt = `
-            You are "EzerBot", a smart assistant for a Yeshiva management system.
-            Context: ${context}
+            You are the AI assistant for "Ezer Hatani" Yeshiva System.
             
-            Capabilities:
-            1. Analyze attached file data (CSV/Text) and answer questions.
-            2. Control the app via JSON commands.
-            3. Answer general questions in Hebrew.
-
-            JSON COMMANDS (Output ONLY JSON if action is needed):
-            - {"tool": "navigate", "view": "dashboard|students|donors|finance|reports"}
-            - {"tool": "search", "term": "search term"}
-            - {"tool": "report", "type": "visual|finance"}
-
-            If no command needed, just answer in Hebrew.
-            User says: "${text}"
+            **STRICT RULES:**
+            1. **SCOPE:** Only answer questions about this system (Students, Donors, Finance, Reports). If asked about anything else (weather, history, code, general knowledge), politely refuse: "אני יכול לעזור רק בנושאים הקשורים למערכת עזר חתנים."
+            2. **ACTIONS:** You can guide the user. Available tools:
+               - Navigate: {"tool": "navigate", "view": "view_name"}
+               - Search: {"tool": "search", "term": "text"}
+            3. **DATA PROTECTION:** If the user uploads a file with names that exist in the DB (I will provide duplicates list), WARN them. Do not hallucinate data.
+            
+            **System State:** ${JSON.stringify(context)}
+            ${this.currentFileContent ? `**Attached File:** ${this.currentFileContent}` : ''}
             `;
 
             const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${window.GEMINI_API_KEY}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ contents: [{ parts: [{ text: systemPrompt }] }] })
+                body: JSON.stringify({ contents: [{ parts: [{ text: systemPrompt + "\nUser: " + text }] }] })
             });
 
-            if (!response.ok) {
-                if (response.status === 429) throw new Error("QUOTA");
-                throw new Error("NETWORK");
-            }
-
+            if (!response.ok) throw new Error("API Error");
+            
             const data = await response.json();
-            const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || "שגיאה בקבלת תשובה.";
+            const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || "שגיאה בקבלת תשובה";
 
-            document.getElementById(loadingId).parentElement.remove(); // הסרת הודעת טעינה
+            // מחיקת הודעת טעינה והצגת תשובה (פשוטה, ללא מחיקת ה-DOM האחרון כרגע למניעת באגים)
             this.handleAIResponse(reply);
 
-        } catch (error) {
-            const loader = document.getElementById(loadingId);
-            if(loader) loader.parentElement.remove();
-
-            if (error.message === "QUOTA") {
-                this.isQuotaExceeded = true;
-                this.addMsg(`
-                    <div class="border-r-4 border-red-500 pr-2 bg-red-50 p-2">
-                        <strong>הגענו למגבלת השימוש.</strong><br>
-                        עובר למצב אופליין.
-                    </div>
-                `, 'system');
-            } else {
-                this.addMsg("שגיאת תקשורת עם Gemini. מנסה לענות באופליין...", 'system');
-            }
-            
-            this.setMode('offline');
-            this.processOffline(text);
+        } catch (e) {
+            console.error(e);
+            this.addMsg("שגיאה בתקשורת. נסה שוב.", 'system');
         }
     },
 
     handleAIResponse(reply) {
-        const cleanReply = reply.replace(/```json/g, '').replace(/```/g, '').trim();
-
+        const clean = reply.replace(/```json/g, '').replace(/```/g, '').trim();
         try {
-            if (cleanReply.startsWith('{') && cleanReply.endsWith('}')) {
-                const cmd = JSON.parse(cleanReply);
-                
+            if (clean.startsWith('{')) {
+                const cmd = JSON.parse(clean);
                 if (cmd.tool === 'navigate') {
                     Router.go(cmd.view);
-                    this.addMsg(`ניווטתי למסך ${cmd.view}.`, 'ai');
+                    this.addMsg(`עברתי למסך ${cmd.view}`, 'ai');
                 } else if (cmd.tool === 'search') {
-                    if (Router.current !== 'students') Router.go('students');
+                    if(Router.current !== 'students') Router.go('students');
                     Students.render(cmd.term);
-                    this.addMsg(`חיפשתי את "${cmd.term}".`, 'ai');
-                } else if (cmd.tool === 'report') {
-                    if (cmd.type === 'visual') Reports.openEditor();
-                    else Reports.generateStandard();
-                    this.addMsg("הפעלתי את הדוח המבוקש.", 'ai');
+                    this.addMsg(`חיפשתי: ${cmd.term}`, 'ai');
                 }
             } else {
-                this.addMsg(reply.replace(/\n/g, '<br>'), 'ai');
+                this.addMsg(clean.replace(/\n/g, '<br>'), 'ai');
             }
         } catch (e) {
             this.addMsg(reply, 'ai');
@@ -238,32 +250,12 @@ const HybridAI = {
     },
 
     processOffline(text) {
-        let response = "אני במצב אופליין. יכולות מוגבלות.";
-        
-        if (this.currentFileContent) {
-            response = "באופליין אני יכול רק להציג את תחילת הקובץ:<br><pre class='text-xs bg-gray-200 p-2 mt-1 overflow-auto max-h-32'>" + this.currentFileContent.substring(0, 300) + "...</pre>";
-            this.clearFile();
-        }
-        else if (text.includes('דוח')) {
-            if (text.includes('כספ')) { Reports.generateStandard(); response = "מפיק דוח כספי..."; }
-            else { Reports.openEditor(); response = "פותח עורך דוחות..."; }
-        }
-        else if (text.includes('עבור') || text.includes('לך')) {
-            if(text.includes('קופה')) { Router.go('finance'); response = "עובר לקופה..."; }
-            else if(text.includes('בית')) { Router.go('dashboard'); response = "עובר לבית..."; }
-            else response = "לא הבנתי לאן לעבור.";
-        }
-        else if (text.includes('חפש')) {
-            const term = text.replace('חפש','').trim();
-            if (Router.current !== 'students') Router.go('students');
-            Students.render(term);
-            response = `מחפש "${term}"...`;
-        }
-
-        this.addMsg(response, 'ai');
+        let res = "אני במצב אופליין. יכולות מוגבלות.";
+        if (text.includes('דוח')) { Reports.generateStandard(); res = "מפיק דוח..."; }
+        else if (text.includes('עבור')) { Router.go('dashboard'); res = "עובר..."; }
+        this.addMsg(res, 'ai');
     }
 };
 
 window.HybridAI = HybridAI;
-// טעינה מאוחרת לוודא שכל התלויות קיימות
 document.addEventListener('DOMContentLoaded', () => setTimeout(() => HybridAI.init(), 1000));
