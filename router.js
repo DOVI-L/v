@@ -1,11 +1,10 @@
 const Router = {
     current: null,
     go(view) {
-        // עדכון הרשאות: דוחות פתוחים לכולם (הגבלה פנימית על דוח כספי תתבצע בתוך reports.js)
         if (view === 'finance' && Store.role === 'user') return Notify.show('אין לך הרשאה לצפות בנתונים כספיים', 'error');
         if (view === 'settings' && Store.role === 'user') return Notify.show('אין לך הרשאה להגדרות', 'error');
         
-        // הוסר החסימה הגורפת על דוחות
+        // הוסר החסימה על דוחות למשתמש רגיל
         // if (view === 'reports' && Store.role === 'user') return Notify.show('אין לך הרשאה לדוחות', 'error');
 
         this.current = view;

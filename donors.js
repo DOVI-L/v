@@ -3,32 +3,41 @@ const Donors = {
     viewMode: 'list', 
     viewTab: 'all',
     kanbanDay: 'night14', 
+    // שינוי: loadMore מחזיר Promise
     loadMore(reset = false) {
-        if(reset) { Store.cursors.donors = null; Store.loadedAll.donors = false; }
-        document.getElementById('donors-loader-more').style.display = 'block';
-        document.getElementById('donors-loader-more').querySelector('button').innerText = 'טוען...';
-        let query = db.ref('global/donors').orderByKey().limitToLast(this.limit);
-        if(Store.cursors.donors) query = query.endBefore(Store.cursors.donors);
-        query.once('value', snap => {
-            const data = snap.val();
-            if(!data) {
-                Store.loadedAll.donors = true;
-                document.getElementById('donors-loader-more').style.display = 'none';
-                return;
+        return new Promise((resolve) => {
+            if(reset) { Store.cursors.donors = null; Store.loadedAll.donors = false; }
+            const loader = document.getElementById('donors-loader-more');
+            if(loader) {
+                 loader.style.display = 'block';
+                 const btn = loader.querySelector('button');
+                 if(btn) btn.innerText = 'טוען...';
             }
-            const keys = Object.keys(data).sort();
-            Store.cursors.donors = keys[0];
-            Object.assign(Store.data.donors, data);
-            OfflineManager.saveState('donors', Store.data.donors);
-            this.render();
-            if (keys.length < this.limit) {
-                Store.loadedAll.donors = true;
-                document.getElementById('donors-loader-more').style.display = 'none';
-            } else {
-                document.getElementById('donors-loader-more').innerHTML = `
-                    <button onclick="Donors.loadMore()" class="bg-slate-200 text-slate-600 px-6 py-2 rounded-full font-bold text-sm">טען עוד...</button>
-                `;
-            }
+            let query = db.ref('global/donors').orderByKey().limitToLast(this.limit);
+            if(Store.cursors.donors) query = query.endBefore(Store.cursors.donors);
+            query.once('value', snap => {
+                const data = snap.val();
+                if(!data) {
+                    Store.loadedAll.donors = true;
+                    if(loader) loader.style.display = 'none';
+                    resolve();
+                    return;
+                }
+                const keys = Object.keys(data).sort();
+                Store.cursors.donors = keys[0];
+                Object.assign(Store.data.donors, data);
+                OfflineManager.saveState('donors', Store.data.donors);
+                this.render();
+                if (keys.length < this.limit) {
+                    Store.loadedAll.donors = true;
+                    if(loader) loader.style.display = 'none';
+                } else {
+                    if(loader) loader.innerHTML = `
+                        <button onclick="Donors.loadMore()" class="bg-slate-200 text-slate-600 px-6 py-2 rounded-full font-bold text-sm">טען עוד...</button>
+                    `;
+                }
+                resolve();
+            });
         });
     },
     syncNewest() {
@@ -81,8 +90,9 @@ const Donors = {
         this.renderList();
     },
     renderList(searchTerm) {
-        const term = searchTerm || document.getElementById('donor-search-input').value.trim();
+        const term = searchTerm || (document.getElementById('donor-search-input') ? document.getElementById('donor-search-input').value.trim() : '');
         const tbody = document.getElementById('donors-tbody');
+        if(!tbody) return;
         const selectedGroupId = document.getElementById('donor-group-select').value;
         
         tbody.innerHTML = '';
@@ -99,7 +109,9 @@ const Donors = {
                 list = list.filter(d => donorsInGroup.has(d.id));
             } else {
                 const donorsInDay = new Set();
-                Object.values(groupsInDay).forEach(g => (g.route || []).forEach(id => donorsInDay.add(id)));
+                Object.values(groupsInDay).forEach(g => (g.route || []).forEach(id => {
+                     if(!id.startsWith('NOTE:')) donorsInDay.add(id);
+                }));
                 list = list.filter(d => donorsInDay.has(d.id));
             }
         }
@@ -138,7 +150,6 @@ const Donors = {
             tbody.appendChild(tr);
         });
     },
-    // פונקציה להוספת תרומות ברצף לתורם (שכפול לוגיקה מסטודנטים)
     openBatchDonation(id, name) {
         const html = `
             <div class="space-y-4">
@@ -275,19 +286,33 @@ const Donors = {
             `;
             const listEl = col.querySelector('.kanban-group-list');
             (g.route || []).forEach(did => {
-                const d = Store.data.donors[did];
-                if(d) {
-                    const item = document.createElement('div');
-                    item.className = "bg-white p-2 border rounded shadow-sm text-sm cursor-grab flex flex-col justify-between group";
+                if(did.startsWith('NOTE:')) {
+                    const noteText = did.substring(5);
+                     const item = document.createElement('div');
+                    item.className = "bg-yellow-50 p-2 border border-yellow-200 rounded shadow-sm text-sm cursor-grab flex flex-col justify-between group";
                     item.dataset.id = did;
                     item.innerHTML = `
-                        <div class="flex justify-between items-start">
-                            <span class="truncate w-40 font-bold">${d.name}</span>
+                        <div class="flex justify-between items-start font-bold text-yellow-800">
+                            <span class="truncate w-40"><i class="fas fa-sticky-note ml-1"></i> ${noteText}</span>
                             <button onclick="Groups.removeFromRoute('${g.day}','${g.id}','${did}')" class="text-red-300 hover:text-red-500 hidden group-hover:block"><i class="fas fa-times"></i></button>
                         </div>
-                        <div class="text-xs text-gray-500 mt-1 truncate">${d.city||''} ${d.street||d.address||''}</div>
                     `;
                     listEl.appendChild(item);
+                } else {
+                    const d = Store.data.donors[did];
+                    if(d) {
+                        const item = document.createElement('div');
+                        item.className = "bg-white p-2 border rounded shadow-sm text-sm cursor-grab flex flex-col justify-between group";
+                        item.dataset.id = did;
+                        item.innerHTML = `
+                            <div class="flex justify-between items-start">
+                                <span class="truncate w-40 font-bold">${d.name}</span>
+                                <button onclick="Groups.removeFromRoute('${g.day}','${g.id}','${did}')" class="text-red-300 hover:text-red-500 hidden group-hover:block"><i class="fas fa-times"></i></button>
+                            </div>
+                            <div class="text-xs text-gray-500 mt-1 truncate">${d.city||''} ${d.street||d.address||''}</div>
+                        `;
+                        listEl.appendChild(item);
+                    }
                 }
             });
             container.appendChild(col);
@@ -311,7 +336,7 @@ const Donors = {
         if (!g) return;
         
         Reports.getAllHistory().then(historyData => {
-            const donors = (g.route || []).map(did => Store.data.donors[did]).filter(x => x);
+            const donors = (g.route || []).filter(x => !x.startsWith('NOTE:')).map(did => Store.data.donors[did]).filter(x => x);
             const years = Object.keys(HEBREW_YEARS_MAPPING).sort().slice(-3);
             let html = `<div class="overflow-x-auto"><table class="w-full text-sm border-collapse"><thead class="bg-gray-100"><tr><th class="p-2 border">שם</th><th class="p-2 border">כתובת</th>${years.map(y => `<th class="p-2 border text-center">${y}</th>`).join('')}<th class="p-2 border"></th></tr></thead><tbody>`;
             donors.forEach(d => {

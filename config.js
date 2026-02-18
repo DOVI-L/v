@@ -29,6 +29,7 @@ const PREDEFINED_FIELDS = {
     students: [
         {k:'firstName', l:'שם פרטי', t:'text', r:true},
         {k:'lastName', l:'שם משפחה', t:'text', r:true},
+        {k:'studentNum', l:'מספר מזהה', t:'text'}, // הוספת שדה מספר מזהה
         {k:'phone', l:'טלפון', t:'text'},
         {k:'grade', l:'שיעור', t:'select', opts:SHIURIM_ORDER},
         {k:'entryYear', l:'שנת כניסה', t:'text'}, 
@@ -53,11 +54,10 @@ const PREDEFINED_FIELDS = {
 };
 
 const DEFAULT_ACTIVE_FIELDS = {
-    students: ['firstName', 'lastName', 'phone','grade','entryYear'],
+    students: ['firstName', 'lastName', 'studentNum', 'phone','grade','entryYear'],
     donors: ['firstName', 'lastName', 'city', 'neighborhood', 'street', 'floor', 'phone', 'notes']
 };
 
-// ייצוא לחלון כדי ששאר הקבצים יכירו את המשתנים
 window.db = db;
 window.auth = auth;
 window.firebaseConfig = firebaseConfig;

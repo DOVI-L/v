@@ -39,7 +39,7 @@ const Store = {
     },
 
     loadStats() {
-        if (Store.role === 'user') return;
+        if (Store.role === 'user') return; // Note: Role check might need adjustment if users need stats
         const ref = db.ref(`years/${this.currentYear}/stats`);
         ListenerManager.add(ref, 'value', s => {
             this.data.stats = s.val() || { income: 0, expense: 0 };
@@ -57,7 +57,11 @@ const Store = {
             this.data.donorGroupMap = {};
             Object.values(groupsData).forEach(dayGroups => {
                 Object.values(dayGroups).forEach(g => {
-                    if(g.route) g.route.forEach(did => this.data.donorGroupMap[did] = g.name);
+                    if(g.route) g.route.forEach(did => {
+                        if (!did.startsWith('NOTE:')) {
+                            this.data.donorGroupMap[did] = g.name;
+                        }
+                    });
                 });
             });
             
@@ -77,6 +81,24 @@ const Store = {
             }
             System.toggleAI(this.data.config.enableAI);
         });
+    },
+
+    // פונקציה חדשה לוידוא טעינת כל הנתונים
+    async ensureAllLoaded(types = ['students', 'donors']) {
+        if (!Array.isArray(types)) types = [types];
+        
+        for (const type of types) {
+            if (this.loadedAll[type]) continue;
+
+            Notify.show(`טוען את כל ה-${type === 'students' ? 'בחורים' : 'תורמים'} להדפסה/ייצוא...`, 'info');
+            
+            // Loop until loadedAll is true
+            while (!this.loadedAll[type]) {
+                if (type === 'students') await Students.loadMore();
+                else if (type === 'donors') await Donors.loadMore();
+            }
+        }
+        Notify.show('כל הנתונים נטענו בהצלחה', 'success');
     }
 };
 

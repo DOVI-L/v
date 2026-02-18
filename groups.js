@@ -78,35 +78,67 @@ const Groups = {
         const routeList = document.getElementById('group-route-list');
         routeList.innerHTML = '';
         
+        // כפתור הוספת הערה
+        routeList.innerHTML += `<div class="mb-2 text-center"><button onclick="Groups.addRouteNote()" class="text-xs text-indigo-600 font-bold border border-indigo-200 bg-indigo-50 px-3 py-1 rounded hover:bg-indigo-100">+ הוסף הערת מסלול</button></div>`;
+        
         (group.route || []).forEach((did, i) => {
-            const d = Store.data.donors[did];
-            if(!d) return;
-            const el = document.createElement('div');
-            el.className = "bg-white p-3 border rounded-lg shadow-sm text-sm mb-2 flex justify-between items-center cursor-grab active:cursor-grabbing hover:border-emerald-200 transition";
-            el.dataset.id = did;
-            el.innerHTML = `
-                <div class="flex items-center gap-3">
-                    <span class="bg-emerald-100 text-emerald-700 w-6 h-6 flex items-center justify-center rounded-full text-xs font-bold">${i+1}</span>
-                    <div>
-                        <div class="font-bold text-slate-800">${d.name}</div>
-                        <div class="text-xs text-gray-500">${d.city || ''} ${d.street || d.address || ''}</div>
+            if (did.startsWith('NOTE:')) {
+                const noteText = did.substring(5);
+                const el = document.createElement('div');
+                el.className = "bg-yellow-50 p-3 border border-yellow-200 rounded-lg shadow-sm text-sm mb-2 flex justify-between items-center cursor-grab active:cursor-grabbing hover:border-yellow-300 transition";
+                el.dataset.id = did;
+                el.innerHTML = `
+                    <div class="flex items-center gap-3 w-full">
+                        <span class="bg-yellow-200 text-yellow-800 w-6 h-6 flex items-center justify-center rounded-full text-xs font-bold"><i class="fas fa-sticky-note"></i></span>
+                        <div class="flex-1 font-bold text-yellow-900">${noteText}</div>
+                        <button onclick="Groups.removeFromRoute('${this.currentDay}','${this.activeGroupId}','${did}')" class="text-red-300 hover:text-red-500"><i class="fas fa-times"></i></button>
                     </div>
-                </div>
-                <i class="fas fa-grip-lines text-gray-300"></i>
-            `;
-            routeList.appendChild(el);
+                `;
+                routeList.appendChild(el);
+            } else {
+                const d = Store.data.donors[did];
+                if(!d) return;
+                const el = document.createElement('div');
+                el.className = "bg-white p-3 border rounded-lg shadow-sm text-sm mb-2 flex justify-between items-center cursor-grab active:cursor-grabbing hover:border-emerald-200 transition";
+                el.dataset.id = did;
+                el.innerHTML = `
+                    <div class="flex items-center gap-3 w-full">
+                        <span class="bg-emerald-100 text-emerald-700 w-6 h-6 flex items-center justify-center rounded-full text-xs font-bold">${i+1}</span>
+                        <div class="flex-1 overflow-hidden">
+                            <div class="font-bold text-slate-800 truncate">${d.name}</div>
+                            <div class="text-xs text-gray-500 truncate">${d.city || ''} ${d.street || d.address || ''}</div>
+                        </div>
+                        <i class="fas fa-grip-lines text-gray-300"></i>
+                    </div>
+                `;
+                routeList.appendChild(el);
+            }
         });
         
         if(this.sortableInstance) this.sortableInstance.destroy();
         this.sortableInstance = new Sortable(routeList, {
             animation: 150,
             ghostClass: 'bg-emerald-50',
+            handle: '.cursor-grab', // Changed to ensure note handle works or whole element
             onEnd: () => {
-                const newOrder = Array.from(routeList.children).map(c => c.dataset.id);
+                const newOrder = Array.from(routeList.children).filter(c => c.dataset.id).map(c => c.dataset.id);
                 OfflineManager.write(`years/${Store.currentYear}/groups/${this.currentDay}/${this.activeGroupId}/route`, newOrder);
             }
         });
         this.filterStudents('');
+    },
+
+    addRouteNote() {
+        const text = prompt("הכנס טקסט להערה במסלול (לדוגמה: 'הפסקה', 'מעבר לרחוב הבא'):");
+        if(text) {
+             const path = `years/${Store.currentYear}/groups/${this.currentDay}/${this.activeGroupId}/route`;
+             db.ref(path).once('value', s => {
+                const list = s.val() || [];
+                list.push(`NOTE:${text}`);
+                OfflineManager.write(path, list);
+                setTimeout(() => Store.loadGroups(), 300);
+             });
+        }
     },
     
     addNewGroup() {
@@ -219,7 +251,6 @@ const Groups = {
     },
     
     copyFromPreviousYear() {
-        // ... (העתקה משנה קודמת ללא שינוי) ...
         const mapRev = {'תשפ״ח':5788, 'תשפ״ז':5787, 'תשפ״ו':5786, 'תשפ״ה':5785, 'תשפ״ד':5784, 'תשפ״ג':5783, 'תשפ״ב':5782, 'תשפ״א':5781, 'תש״פ':5780};
         const map = {5788:'תשפ״ח', 5787:'תשפ״ז', 5786:'תשפ״ו', 5785:'תשפ״ה', 5784:'תשפ״ד', 5783:'תשפ״ג', 5782:'תשפ״ב', 5781:'תשפ״א', 5780:'תש״פ'};
         
@@ -268,13 +299,14 @@ const Groups = {
         });
     },
     
-    exportGroupData(format) {
-        // ... (ייצוא אקסל ללא שינוי) ...
+    async exportGroupData(format) {
         const g = (Store.data.yearData[Store.currentYear].groups[this.currentDay] || {})[this.activeGroupId];
         if(!g) return;
+
+        await Store.ensureAllLoaded('donors');
         
         Reports.getAllHistory().then(historyData => {
-            const donors = (g.route || []).map(did => Store.data.donors[did]).filter(x => x);
+            const donors = (g.route || []).filter(x => !x.startsWith('NOTE:')).map(did => Store.data.donors[did]).filter(x => x);
             const rows = donors.map(d => {
                 const row = {
                     "שם": d.name,
@@ -295,26 +327,16 @@ const Groups = {
                 XLSX.utils.book_append_sheet(wb, ws, "נתוני קבוצה");
                 XLSX.writeFile(wb, `Group_${g.name}.xlsx`);
             } else {
-                // PDF ייעשה דרך העורך החדש אם נדרש, כאן זה הקיים
-                const doc = new jspdf.jsPDF({ orientation: 'landscape' });
-                doc.text(`Group: ${g.name}`, 200, 10, { align: 'right' });
-                const headers = Object.keys(rows[0] || {});
-                const body = rows.map(r => Object.values(r));
-                doc.autoTable({
-                    head: [headers],
-                    body: body,
-                    theme: 'grid',
-                    styles: { halign: 'right' }
-                });
-                doc.save(`Group_${g.name}.pdf`);
+                 // שימוש בעורך להדפסת נתונים
+                 this.printSheet('data');
             }
         });
     },
     
-    printAllGroups() {
-        // ... (הדפסת קוביות קבוצות - ללא שינוי מהותי, אלא אם תרצה להעביר גם את זה לעורך) ...
-        // כרגע נשאר window.print כי זה פורמט ייחודי לקוביות
+    async printAllGroups() {
         Notify.show('מכין הדפסה מרוכזת...', 'info');
+        await Store.ensureAllLoaded('students');
+
         const groups = Store.data.yearData[Store.currentYear]?.groups[this.currentDay] || {};
         const dayName = this.currentDay.replace('night','ליל ').replace('day','יום ');
 
@@ -356,7 +378,7 @@ const Groups = {
         window.print();
     },
     
-    // שינוי עיקרי כאן: במקום window.print, פותחים את העורך המותאם
+    // שינוי עיקרי כאן: פתיחת העורך המתקדם ודוח מסלול מסודר
     async printSheet(type) {
         const g = (Store.data.yearData[Store.currentYear].groups[this.currentDay] || {})[this.activeGroupId];
         if(!g) return;
@@ -364,12 +386,11 @@ const Groups = {
         const dayMap = {'night14': 'ליל י"ד', 'day14': 'יום י"ד', 'day15': 'יום ט"ו'};
         const dayName = dayMap[this.currentDay] || this.currentDay;
         
-        let html = `
-            <div class="print-header" style="position: relative;">
-                <h1 class="text-2xl font-black text-center">${type==='route'?'דף מסלול':'דף קבוצה'} - ${g.name}</h1>
-                <h3 class="text-center">שנה: ${Store.currentYear} | זמן: ${dayName}</h3>
-            </div>
-        `;
+        // טען הכל לפני הדפסה
+        if(type === 'members') await Store.ensureAllLoaded('students');
+        if(type === 'route') await Store.ensureAllLoaded('donors');
+        
+        let customHtml = '';
         
         if(type === 'members') {
             const members = g.members || [];
@@ -385,17 +406,28 @@ const Groups = {
                 if (m.role === 'ראש צוות') { roleBadge = '<span class="role-badge role-commander">ראש צוות</span>'; rowClass = 'font-bold bg-blue-50'; }
                 else if (m.role === 'סגן') { roleBadge = '<span class="role-badge role-deputy">סגן</span>'; rowClass = 'bg-yellow-50'; }
                 
-                return `<tr class="${rowClass}"><td width="5%">${idx+1}</td><td width="55%"><b>${name}</b> ${roleBadge}</td><td width="40%">${s.grade || ''}</td></tr>`;
+                return `<tr class="${rowClass}"><td width="5%" class="text-center">${idx+1}</td><td width="55%"><b>${name}</b> ${roleBadge}</td><td width="40%">${s.grade || ''}</td></tr>`;
             };
-
-            html += `<table class="print-table w-full"><thead><tr><th>#</th><th>שם הבחור</th><th>שיעור</th></tr></thead><tbody>`;
+            
+            // יצירת פורמט "דף קבוצה" בסגנון דף בחור
+            customHtml = `
+                <div class="student-slip" style="margin: 0 auto; width: 100%; border: none;">
+                    <div class="student-slip-header">
+                        <div>
+                            <div class="student-slip-title">דף קבוצה: ${g.name}</div>
+                            <div>${dayName} | שנה: ${Store.currentYear}</div>
+                        </div>
+                    </div>
+                    <table class="print-table w-full"><thead><tr><th>#</th><th>שם הבחור</th><th>שיעור</th></tr></thead><tbody>`;
+            
             let count = 0;
-            commanders.forEach(m => html += renderMemberRow(m, count++));
-            deputies.forEach(m => html += renderMemberRow(m, count++));
-            regulars.forEach(m => html += renderMemberRow(m, count++));
-            html += `</tbody></table>`;
+            commanders.forEach(m => customHtml += renderMemberRow(m, count++));
+            deputies.forEach(m => customHtml += renderMemberRow(m, count++));
+            regulars.forEach(m => customHtml += renderMemberRow(m, count++));
+            customHtml += `</tbody></table></div>`;
             
         } else {
+            // דף מסלול
             Notify.show('מכין נתונים להדפסה...', 'info');
             const yearMapRev = {'תשפ״ח':5788, 'תשפ״ז':5787, 'תשפ״ו':5786, 'תשפ״ה':5785, 'תשפ״ד':5784, 'תשפ״ג':5783, 'תשפ״ב':5782, 'תשפ״א':5781, 'תש״פ':5780};
             const yearMap = {5788:'תשפ״ח', 5787:'תשפ״ז', 5786:'תשפ״ו', 5785:'תשפ״ה', 5784:'תשפ״ד', 5783:'תשפ״ג', 5782:'תשפ״ב', 5781:'תשפ״א', 5780:'תש״פ'};
@@ -420,26 +452,40 @@ const Groups = {
 
             const [hist1, hist2, hist3] = await Promise.all([getHistory(prev1), getHistory(prev2), getHistory(prev3)]);
 
-            html += `<table class="print-table w-full text-sm">
-                <thead><tr>
-                    <th width="3%">#</th><th width="20%">שם</th><th width="20%">כתובת</th><th width="16%">הערות</th>
-                    <th width="7%">${prev3}</th><th width="7%">${prev2}</th><th width="7%">${prev1}</th><th width="9%">סכום</th>
-                </tr></thead><tbody>`;
+            customHtml = `
+                <div class="student-slip" style="margin: 0 auto; width: 100%; border: none;">
+                    <div class="student-slip-header">
+                         <div>
+                            <div class="student-slip-title">דף מסלול: ${g.name}</div>
+                            <div>${dayName} | שנה: ${Store.currentYear}</div>
+                        </div>
+                    </div>
+                    <table class="print-table w-full text-sm">
+                        <thead><tr>
+                            <th width="3%">#</th><th width="20%">שם</th><th width="20%">כתובת</th><th width="16%">הערות</th>
+                            <th width="7%">${prev3}</th><th width="7%">${prev2}</th><th width="7%">${prev1}</th><th width="9%">סכום</th>
+                        </tr></thead><tbody>`;
             
-            (g.route||[]).forEach((did, i) => {
-                const d = Store.data.donors[did];
-                if(d) {
-                    const val1 = hist1[did] ? '₪'+hist1[did] : '';
-                    const val2 = hist2[did] ? '₪'+hist2[did] : '';
-                    const val3 = hist3[did] ? '₪'+hist3[did] : '';
-                    html += `<tr><td>${i+1}</td><td>${d.name}</td><td>${d.city||''} ${d.street||''}</td><td>${d.notes||''}</td><td>${val3}</td><td>${val2}</td><td>${val1}</td><td></td></tr>`;
+            let i = 1;
+            (g.route||[]).forEach((did) => {
+                if(did.startsWith('NOTE:')) {
+                     const noteText = did.substring(5);
+                     customHtml += `<tr style="background-color: #fef9c3;"><td colspan="8" style="font-weight:bold; text-align:center; padding: 8px;">-- ${noteText} --</td></tr>`;
+                } else {
+                    const d = Store.data.donors[did];
+                    if(d) {
+                        const val1 = hist1[did] ? '₪'+hist1[did] : '';
+                        const val2 = hist2[did] ? '₪'+hist2[did] : '';
+                        const val3 = hist3[did] ? '₪'+hist3[did] : '';
+                        customHtml += `<tr><td>${i++}</td><td>${d.name}</td><td>${d.city||''} ${d.street||''}</td><td>${d.notes||''}</td><td>${val3}</td><td>${val2}</td><td>${val1}</td><td></td></tr>`;
+                    }
                 }
             });
-            html += `</tbody></table>`;
+            customHtml += `</tbody></table></div>`;
         }
 
-        // פתיחת התוכן בעורך הדוחות במקום הדפסה ישירה
-        Reports.openEditor('custom', html);
+        // פתיחת התוכן בעורך הדוחות במצב מותאם
+        Reports.openEditor('custom', customHtml);
     }
 };
 

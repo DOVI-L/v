@@ -80,9 +80,6 @@ const Reports = {
     },
 
     async printStudentSlip(id, name) {
-        // ... (קוד קיים ללא שינוי בפונקציה זו, היא מדפיסה ישירות ולא בעורך) ...
-        // לצורך הפשטות, אשאיר את הפונקציה המקורית כפי שהיא, אך המשתמש יכול כעת להשתמש בעורך לדברים אחרים.
-        // אם תרצה, ניתן להמיר גם את זה לעורך, אך לא נתבקש במפורש.
         Notify.show('מכין דף בחור להדפסה...', 'info');
         const data = await this.getAllHistory(id);
         const s = Store.data.students[id] || { grade: '', idNum: '' };
@@ -137,8 +134,11 @@ const Reports = {
         window.print();
     },
 
-    generateStandard() {
+    async generateStandard() {
         if(Store.role === 'user') return Notify.show('אין הרשאה להפקת דוח כספי מלא', 'error');
+        
+        await Store.ensureAllLoaded(['students', 'donors']);
+
         Notify.show('מייצא נתונים...', 'info');
         db.ref(`years/${Store.currentYear}/finance`).once('value', snap => {
             const type = document.getElementById('rep-type').value;
@@ -196,7 +196,8 @@ const Reports = {
         orientation: 'landscape', rowsPerPage: 22,
         mode: 'visual', // 'visual' | 'custom'
         customHtml: '', // For group sheets etc.
-        marginPadding: 20 // New for Margins
+        marginPadding: 20,
+        sortBy: 'amount_desc' // amount_desc, name_asc, grade, goal_desc
     },
     
     setRowsPerPage(val) {
@@ -232,6 +233,21 @@ const Reports = {
     renderHeadersEditor() {
         const container = document.getElementById('editor-headers-container');
         container.innerHTML = '';
+        
+        // הוספת בורר מיון
+        const sortDiv = document.createElement('div');
+        sortDiv.className = "mb-2 border-b pb-2";
+        sortDiv.innerHTML = `
+            <label class="text-xs font-bold block mb-1">מיון לפי:</label>
+            <select onchange="Reports.setSort(this.value)" class="text-xs border rounded p-1 w-full">
+                <option value="amount_desc" ${this.editorState.sortBy === 'amount_desc' ? 'selected' : ''}>סכום לתצוגה (מהגבוה)</option>
+                <option value="goal_desc" ${this.editorState.sortBy === 'goal_desc' ? 'selected' : ''}>גובה יעד (מהגבוה)</option>
+                <option value="name_asc" ${this.editorState.sortBy === 'name_asc' ? 'selected' : ''}>שם משפחה (א-ת)</option>
+                <option value="grade" ${this.editorState.sortBy === 'grade' ? 'selected' : ''}>שיעור</option>
+            </select>
+        `;
+        container.appendChild(sortDiv);
+
         this.editorState.headersOrder.forEach((originalIndex, displayOrder) => {
             const val = this.editorState.headers[originalIndex];
             const isVis = this.editorState.colsVisible[originalIndex];
@@ -245,6 +261,10 @@ const Reports = {
             `;
             container.appendChild(el);
         });
+    },
+    setSort(val) {
+        this.editorState.sortBy = val;
+        this.renderEditorCanvas();
     },
     moveHeader(currIdx, direction) {
         const newIdx = currIdx + direction;
@@ -261,7 +281,7 @@ const Reports = {
     async renderEditorCanvas() {
         const container = document.getElementById('report-canvas-container');
         
-        // הוספנו סליידר לשוליים בתפריט הצדדי ב-index.html או דינאמית כאן אם לא קיים
+        // הוספנו סליידר לשוליים בתפריט הצדדי אם לא קיים
         if (!document.getElementById('margin-control')) {
             const sidebarDiv = document.querySelector('#report-sidebar .space-y-4');
             const div = document.createElement('div');
@@ -277,7 +297,6 @@ const Reports = {
 
         if (this.editorState.mode === 'custom') {
             container.innerHTML = '';
-            // בדף מותאם, יוצרים דף אחד (או יותר, תלוי בתוכן - כרגע נניח אחד לגלול)
             const bgStyle = this.editorState.bgImg ? `background-image: url('${this.editorState.bgImg}');` : '';
             const pageClass = this.editorState.orientation === 'landscape' ? 'page-landscape' : 'page-portrait';
             
@@ -285,10 +304,8 @@ const Reports = {
             <div class="report-page ${pageClass} editor-print-mode" style="transform: scale(${this.editorState.zoom}); padding: ${this.editorState.marginPadding}px;">
                 <div class="print-layer-bg bg-contain bg-center bg-no-repeat" style="${bgStyle} opacity: ${this.editorState.bgOpacity};"></div>
                 <div class="print-layer-content h-full flex flex-col relative">
-                     <!-- תוכן הדוח המותאם -->
                      ${this.editorState.customHtml}
                      
-                     <!-- לוגו ברירת מחדל הניתן לגרירה -->
                      <div class="draggable-item" id="default-logo" style="top: 10px; left: 10px; width: 80px;">
                         <img src="1.JPG" class="w-full h-full object-contain pointer-events-none">
                         <div class="resize-handle"></div>
@@ -300,7 +317,6 @@ const Reports = {
             pageEl.innerHTML = pageHtml;
             container.appendChild(pageEl.firstElementChild);
             
-            // הפעלת גרירה ללוגו
             setTimeout(() => {
                 const logo = document.getElementById('default-logo');
                 if(logo) this.makeDraggable(logo);
@@ -308,9 +324,12 @@ const Reports = {
             return;
         }
 
-        // --- מכאן: לוגיקה קיימת לדוח תצוגה (Visual Report) ---
+        // --- דוח תצוגה (Visual Report) ---
         container.innerHTML = '<div class="absolute inset-0 flex items-center justify-center text-gray-400">טוען נתונים...</div>';
         
+        // וודא שכל הנתונים נטענו לפני דוח תצוגה
+        await Store.ensureAllLoaded(['students', 'donors']);
+
         const [finSnap, grpSnap] = await Promise.all([
             db.ref(`years/${Store.currentYear}/finance`).once('value'),
             db.ref(`years/${Store.currentYear}/groups`).once('value')
@@ -357,6 +376,8 @@ const Reports = {
             const yData = (Store.data.yearData[Store.currentYear]?.students || {})[student.id] || {};
             const goal = yData.personalGoal || config.baseStudentGoal || 0;
             const name = student.firstName && student.lastName ? `${student.firstName} ${student.lastName}` : student.name;
+            const lastName = student.lastName || '';
+            const grade = student.grade || '';
             const totalDisplay = Math.round(actual + extra);
 
             const studentTiers = config.studentTiers || [];
@@ -364,11 +385,19 @@ const Reports = {
             const reward = rewardTier ? rewardTier.reward : '-';
 
             if(totalDisplay > 0 || goal > 0) {
-                list.push({name, goal, totalDisplay, pct: goal>0 ? Math.round((totalDisplay/goal)*100) : 0, reward});
+                list.push({name, lastName, grade, goal, totalDisplay, pct: goal>0 ? Math.round((totalDisplay/goal)*100) : 0, reward});
             }
         });
 
-        list.sort((a,b) => b.totalDisplay - a.totalDisplay);
+        // מיון
+        const sortType = this.editorState.sortBy;
+        list.sort((a,b) => {
+             if (sortType === 'amount_desc') return b.totalDisplay - a.totalDisplay;
+             if (sortType === 'goal_desc') return b.goal - a.goal;
+             if (sortType === 'name_asc') return a.lastName.localeCompare(b.lastName);
+             if (sortType === 'grade') return (a.grade||'').localeCompare(b.grade||'');
+             return 0;
+        });
 
         const ROWS_PER_PAGE = this.editorState.rowsPerPage || (this.editorState.orientation === 'landscape' ? 22 : 35);
         const chunks = [];
@@ -435,7 +464,6 @@ const Reports = {
             container.appendChild(pageEl.firstElementChild);
         });
 
-        // הפעלת גרירה על כל הלוגואים שנוצרו
         setTimeout(() => {
             document.querySelectorAll('.draggable-item').forEach(el => this.makeDraggable(el));
         }, 100);
@@ -507,7 +535,6 @@ const Reports = {
     },
     makeDraggable(elmnt) {
         let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
-        let isResizing = false;
         elmnt.onmousedown = function(e) {
             if (e.target.classList.contains('resize-handle')) return; 
             document.querySelectorAll('.draggable-item').forEach(el => el.classList.remove('selected'));
@@ -518,12 +545,11 @@ const Reports = {
         if (resizeHandle) {
             resizeHandle.onmousedown = function(e) {
                 e.stopPropagation();
-                isResizing = true;
                 e.preventDefault();
                 let startX = e.clientX;
                 let startWidth = parseInt(document.defaultView.getComputedStyle(elmnt).width, 10);
                 document.onmouseup = function() {
-                    document.onmouseup = null; document.onmousemove = null; isResizing = false;
+                    document.onmouseup = null; document.onmousemove = null;
                 };
                 document.onmousemove = function(e) {
                     let newW = startWidth + (e.clientX - startX) / Reports.editorState.zoom; 
@@ -556,7 +582,6 @@ const Reports = {
              const c = page.cloneNode(true);
              c.style.transform = 'none'; 
              c.style.marginBottom = '0';
-             // מסיר את הגבולות של אלמנטים נבחרים בהדפסה
              c.querySelectorAll('.draggable-item').forEach(el => {
                 el.classList.remove('selected');
                 el.style.border = 'none';

@@ -1,37 +1,45 @@
 const Students = {
     limit: 30,
+    // שינוי: loadMore מחזיר Promise
     loadMore(reset = false) {
-        if (reset) {
-            Store.cursors.students = null;
-            Store.loadedAll.students = false;
-        }
-        document.getElementById('students-loader-more').style.display = 'block';
-        document.getElementById('students-loader-more').innerText = 'טוען נתונים...';
-
-        let query = db.ref('global/students').orderByKey().limitToLast(this.limit);
-        if (Store.cursors.students) query = query.endBefore(Store.cursors.students);
-
-        query.once('value', snap => {
-            const data = snap.val();
-            if (!data) {
-                Store.loadedAll.students = true;
-                document.getElementById('students-loader-more').style.display = 'none';
-                return;
+        return new Promise((resolve) => {
+            if (reset) {
+                Store.cursors.students = null;
+                Store.loadedAll.students = false;
             }
-            const keys = Object.keys(data).sort();
-            Store.cursors.students = keys[0];
-            Object.assign(Store.data.students, data);
-            OfflineManager.saveState('students', Store.data.students);
-            this.render();
-            if (keys.length < this.limit) {
-                Store.loadedAll.students = true;
-                document.getElementById('students-loader-more').style.display = 'none';
-            } else {
-                document.getElementById('students-loader-more').innerHTML = `
-                    <button onclick="Students.loadMore()" class="bg-slate-100 text-slate-600 hover:bg-slate-200 px-6 py-2 rounded-full text-sm font-bold transition shadow-sm">
-                        <i class="fas fa-chevron-down ml-2"></i> טען עוד בחורים
-                    </button>`;
+            const loader = document.getElementById('students-loader-more');
+            if(loader) {
+                loader.style.display = 'block';
+                loader.innerText = 'טוען נתונים...';
             }
+
+            let query = db.ref('global/students').orderByKey().limitToLast(this.limit);
+            if (Store.cursors.students) query = query.endBefore(Store.cursors.students);
+
+            query.once('value', snap => {
+                const data = snap.val();
+                if (!data) {
+                    Store.loadedAll.students = true;
+                    if(loader) loader.style.display = 'none';
+                    resolve();
+                    return;
+                }
+                const keys = Object.keys(data).sort();
+                Store.cursors.students = keys[0];
+                Object.assign(Store.data.students, data);
+                OfflineManager.saveState('students', Store.data.students);
+                this.render();
+                if (keys.length < this.limit) {
+                    Store.loadedAll.students = true;
+                    if(loader) loader.style.display = 'none';
+                } else {
+                    if(loader) loader.innerHTML = `
+                        <button onclick="Students.loadMore()" class="bg-slate-100 text-slate-600 hover:bg-slate-200 px-6 py-2 rounded-full text-sm font-bold transition shadow-sm">
+                            <i class="fas fa-chevron-down ml-2"></i> טען עוד בחורים
+                        </button>`;
+                }
+                resolve();
+            });
         });
     },
     syncNewest() {
@@ -45,8 +53,10 @@ const Students = {
         });
     },
     render(searchTerm = null) {
-        const term = searchTerm || document.getElementById('student-search').value.trim();
+        const term = searchTerm || (document.getElementById('student-search') ? document.getElementById('student-search').value.trim() : '');
         const tbody = document.getElementById('students-tbody');
+        if(!tbody) return;
+        
         tbody.innerHTML = '';
         let list = Object.values(Store.data.students).filter(s => s).map(s => {
             const fullName = s.firstName && s.lastName ? `${s.firstName} ${s.lastName}` : (s.name || 'ללא שם');
@@ -61,13 +71,13 @@ const Students = {
         });
         
         if(term) {
-            list = list.filter(s => (s.displayName || '').includes(term) || (s.phone || '').includes(term) || (s.grade && s.grade.includes(term)));
+            list = list.filter(s => (s.displayName || '').includes(term) || (s.phone || '').includes(term) || (s.grade && s.grade.includes(term)) || (s.studentNum && s.studentNum.includes(term)));
         }
         
         const displayList = list.slice(0, 100); 
         
         if (displayList.length === 0) {
-             tbody.innerHTML = '<tr><td colspan="5" class="text-center p-4 text-gray-400">לא נמצאו בחורים</td></tr>';
+             tbody.innerHTML = '<tr><td colspan="6" class="text-center p-4 text-gray-400">לא נמצאו בחורים</td></tr>';
              return;
         }
 
@@ -84,7 +94,9 @@ const Students = {
             const archiveTitle = s.isArchived ? 'שחזר מהיסטוריה' : 'העבר להיסטוריה';
             
             row.innerHTML = `
-                <td class="p-3 text-right font-medium text-slate-700 group-hover:text-indigo-600 transition">${s.displayName} ${s.isArchived?'(ארכיון)':''}</td>
+                <td class="p-3 text-right font-medium text-slate-700 group-hover:text-indigo-600 transition">
+                    ${s.displayName} ${s.studentNum ? `<span class="text-xs bg-gray-100 px-1 rounded ml-1 text-gray-500">#${s.studentNum}</span>` : ''} ${s.isArchived?'(ארכיון)':''}
+                </td>
                 <td class="p-3 text-right text-gray-500">${s.grade || '-'}</td>
                 <td class="p-3 text-right text-gray-400">${s.entryYear || '-'}</td>
                 <td class="p-3 text-right font-bold text-slate-800">₪${parseInt(s.effectiveGoal).toLocaleString()}</td>
@@ -100,14 +112,16 @@ const Students = {
             tbody.appendChild(row);
         });
         
-        if(term || Store.loadedAll.students) {
-             document.getElementById('students-loader-more').style.display = 'none';
-        } else if(!Store.loadedAll.students && list.length < 500) {
-             document.getElementById('students-loader-more').style.display = 'block';
+        const loader = document.getElementById('students-loader-more');
+        if(loader) {
+            if(term || Store.loadedAll.students) {
+                 loader.style.display = 'none';
+            } else if(!Store.loadedAll.students && list.length < 500) {
+                 loader.style.display = 'block';
+            }
         }
     },
     
-    // פונקציה חדשה להוספת תרומות ברצף
     openBatchDonation(id, name) {
         const html = `
             <div class="space-y-4">
@@ -201,15 +215,11 @@ const Students = {
 
     addBatchRow() {
         const tbody = document.getElementById('batch-add-tbody');
-        const tr = document.createElement('tr');
-        tr.innerHTML = this.getBatchRowHtml().replace(/<tr.*?>|<\/tr>/g, ''); // Extract inner content or use insertAdjacentHTML
-        // Actually simpler:
         tbody.insertAdjacentHTML('beforeend', this.getBatchRowHtml());
     },
 
     handleSearch(term) { this.render(term); },
     getFormFields() {
-        // ... (קוד קיים) ...
         const activeKeys = (Store.data.config.fields || {}).students || DEFAULT_ACTIVE_FIELDS.students;
         const fields = [];
         activeKeys.forEach(k => {
@@ -222,7 +232,6 @@ const Students = {
         return fields;
     },
     openAddModal() {
-        // ... (קוד קיים) ...
         Modal.render('הוספת בחור חדש', this.getFormFields(), (data) => {
             if (!data.firstName || !data.lastName) {
                 return Notify.show('שגיאה: חובה להזין שם פרטי ושם משפחה', 'error');
@@ -235,7 +244,6 @@ const Students = {
         });
     },
     openQuickAdd() {
-        // ... (קוד קיים) ...
         const html = `
             <div class="mb-4">
                 <label class="block text-sm font-bold text-slate-700 mb-1">הדבק רשימת שמות (כל בחור בשורה נפרדת)</label>
@@ -269,7 +277,6 @@ const Students = {
         });
     },
     openEdit(id) {
-        // ... (קוד קיים) ...
         const s = Store.data.students[id];
         if(!s) return Notify.show('שגיאה בטעינת הבחור', 'error');
         const yData = (Store.data.yearData[Store.currentYear]?.students || {})[id] || {};

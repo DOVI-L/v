@@ -55,7 +55,8 @@ const Importer = {
             systemFields = PREDEFINED_FIELDS.donors;
             isDonationImport = true; 
         } else if (this.currentType === 'students_donations') {
-            systemFields = [{k:'firstName', l:'שם פרטי', t:'text'}, {k:'lastName', l:'שם משפחה', t:'text'},{k:'fullName', l:'שם מלא (עמודה אחת)', t:'text'}];
+            // הוספת שדה מספר מזהה למיפוי
+            systemFields = [{k:'firstName', l:'שם פרטי', t:'text'}, {k:'lastName', l:'שם משפחה', t:'text'},{k:'fullName', l:'שם מלא', t:'text'}, {k:'studentNum', l:'מספר מזהה', t:'text'}];
             isDonationImport = true;
         }
         
@@ -106,7 +107,7 @@ const Importer = {
         let fieldsToCheck = [];
         if (this.currentType === 'students_new') fieldsToCheck = PREDEFINED_FIELDS.students;
         else if (this.currentType === 'donors') fieldsToCheck = PREDEFINED_FIELDS.donors;
-        else fieldsToCheck = [{k:'firstName'},{k:'lastName'},{k:'fullName'}];
+        else fieldsToCheck = [{k:'firstName'},{k:'lastName'},{k:'fullName'}, {k:'studentNum'}];
 
         if (this.currentType !== 'students_donations') {
              const customDefs = Store.data.config.customFieldsDefs || {};
@@ -122,8 +123,8 @@ const Importer = {
             if (el.value) historyMapping[el.dataset.year] = el.value;
         });
 
-        if (this.currentType === 'students_donations' && !mapping.fullName && (!mapping.firstName || !mapping.lastName)) {
-            Notify.show('חובה למפות שם מלא או שם פרטי+משפחה לזיהוי הבחור', 'error');
+        if (this.currentType === 'students_donations' && !mapping.fullName && (!mapping.firstName || !mapping.lastName) && !mapping.studentNum) {
+            Notify.show('חובה למפות מספר מזהה, שם מלא, או שם פרטי+משפחה לזיהוי הבחור', 'error');
             return;
         }
 
@@ -135,12 +136,15 @@ const Importer = {
         db.ref(dbPath).once('value', snapshot => {
             const existingData = snapshot.val() || {};
             const nameMap = {};
+            const numMap = {}; // מפה לזיהוי לפי מספר מזהה
+
             Object.values(existingData).forEach(item => {
                 if (item.name) nameMap[item.name.trim()] = item.id;
                 if (item.name) {
                     const reversedName = item.name.split(' ').reverse().join(' ');
                     nameMap[reversedName] = item.id;
                 }
+                if (item.studentNum) numMap[item.studentNum.toString().trim()] = item.id;
             });
 
             let countNew = 0;
@@ -158,22 +162,33 @@ const Importer = {
                 if (!fullName && (tempObj.firstName || tempObj.lastName)) {
                     fullName = `${tempObj.firstName || ''} ${tempObj.lastName || ''}`.trim();
                 }
-                if (!fullName) return; 
-
-                let entityId = nameMap[fullName];
                 
+                let entityId = null;
+
+                // ניסיון זיהוי לפי מספר מזהה תחילה
+                if (tempObj.studentNum && numMap[tempObj.studentNum.toString().trim()]) {
+                    entityId = numMap[tempObj.studentNum.toString().trim()];
+                }
+                // ניסיון זיהוי לפי שם
+                if (!entityId && fullName && nameMap[fullName]) {
+                    entityId = nameMap[fullName];
+                }
+
                 if (this.currentType !== 'students_donations') {
                     if (!entityId) {
                         entityId = db.ref(dbPath).push().key;
-                        const newObj = { id: entityId, ...tempObj, name: fullName };
+                        const newObj = { id: entityId, ...tempObj, name: fullName || 'לא ידוע' };
                         if (this.currentType === 'students_new') newObj.lastUpdatedYear = Store.currentYear;
                         else newObj.joinYear = Store.currentYear; 
                         updates[`${dbPath}/${entityId}`] = newObj;
-                        nameMap[fullName] = entityId; 
+                        
+                        if(fullName) nameMap[fullName] = entityId; 
+                        if(tempObj.studentNum) numMap[tempObj.studentNum.toString().trim()] = entityId;
+                        
                         countNew++;
                     }
                 } else {
-                    if (!entityId) return; 
+                    if (!entityId) return; // דלג אם לא נמצא בחור קיים
                 }
 
                 if (entityId) {
