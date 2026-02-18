@@ -803,12 +803,32 @@
         </div>
     </div>
 
-    <!-- AI FAB Button -->
-    <div id="ai-fab-container" class="fixed bottom-6 left-6 z-[9990]">
-        <button onclick="const w=document.getElementById('ai-chat-window'); w.classList.toggle('hidden');" class="w-14 h-14 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-full shadow-lg text-white flex items-center justify-center text-2xl hover:scale-110 transition duration-300">
-            <i class="fas fa-robot"></i>
-        </button>
-    </div>
+   <!-- AI FAB Button (בועה צפה לפתיחה) -->
+<!-- שינינו את ה-z-index ל-[20000] כדי ששום דבר לא יסתיר אותו -->
+<div id="ai-fab-container" class="fixed bottom-6 left-6 z-[20000]">
+    <button onclick="toggleChatWindow()" class="w-14 h-14 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-full shadow-lg text-white flex items-center justify-center text-2xl hover:scale-110 transition duration-300 cursor-pointer">
+        <i class="fas fa-robot"></i>
+    </button>
+</div>
+
+<!-- סקריפט עזר קטן לפתיחת החלון - הוסף את זה מייד אחרי הכפתור -->
+<script>
+    function toggleChatWindow() {
+        const w = document.getElementById('ai-chat-window');
+        if (w) {
+            w.classList.toggle('hidden');
+            w.classList.toggle('flex'); // מוודא שהחלון מקבל תצוגת Flex כשהוא נפתח
+            
+            // אם נפתח, נשים פוקוס בשדה הטקסט
+            if (!w.classList.contains('hidden')) {
+                setTimeout(() => document.getElementById('ai-input').focus(), 100);
+            }
+        } else {
+            console.error("AI Chat window element not found!");
+            alert("שגיאה: חלונית הצ'אט לא נמצאה בדף.");
+        }
+    }
+</script>
 
     <!-- Modal: Generic Form -->
     <div id="modal-form" class="fixed inset-0 z-50 bg-black/60 hidden-screen flex items-center justify-center backdrop-blur-sm transition-all duration-300">
