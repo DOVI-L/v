@@ -1,0 +1,39 @@
+name: Deploy Ezer System
+
+on:
+  push:
+    branches: ["main"]  # אם הענף הראשי שלך הוא master, שנה ל-master
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      # הזרקת המפתח הסודי לקובץ config.js
+      - name: Inject Gemini API Key
+        run: |
+          sed -i "s|__GEMINI_KEY_PLACEHOLDER__|${{ secrets.GEMINI_API_KEY }}|g" config.js
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v3
+      - name: Upload Artifact
+        uses: actions/upload-pages-artifact@v2
+        with:
+          path: '.'
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v2
