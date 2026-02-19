@@ -21,40 +21,39 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4  # שודרג ל-v4
+        uses: actions/checkout@v4
 
-      - name: Locate and Inject API Key
+      - name: Inject API Key into Root config.js
         env:
           THE_SECRET: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          FILE_PATH=$(find . -name "config.js" -type f | head -n 1)
+          FILE_PATH="./config.js"
 
-          if [ -z "$FILE_PATH" ]; then
-            echo "❌ Error: config.js file not found!"
+          if [ ! -f "$FILE_PATH" ]; then
+            echo "❌ Error: config.js NOT found in root directory!"
+            ls -R # מדפיס את רשימת הקבצים כדי שתראה איפה הוא כן נמצא
             exit 1
           fi
 
-          echo "✅ Found config.js at: $FILE_PATH"
+          echo "✅ Found config.js in root."
 
-          # בי צוע ההחלפה
+          # ביצוע ההחלפה
           sed -i "s|__GEMINI_KEY_PLACEHOLDER__|$THE_SECRET|g" "$FILE_PATH"
 
-          # בדיקה אם הפלייסהולדר עדיין קיים (כישלון)
+          # בדיקה אם הפלייסהולדר עדיין קיים
           if grep -q "__GEMINI_KEY_PLACEHOLDER__" "$FILE_PATH"; then
             echo "❌ CRITICAL ERROR: Injection failed! Placeholder still exists."
             exit 1
           else
-            echo "✅ SUCCESS: Key injected successfully."
+            echo "✅ SUCCESS: Key injected successfully into root config.js."
           fi
 
       - name: Setup Pages
-        uses: actions/configure-pages@v5  # שודרג ל-v5
-
+        uses: actions/configure-pages@v5
       - name: Upload Artifact
-        uses: actions/upload-pages-artifact@v3  # שודרג ל-v3 (הגרסה העדכנית ל-pages)
+        uses: actions/upload-pages-artifact@v3
         with:
           path: '.'
-
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4  # שודרג ל-v4
+        uses: actions/deploy-pages@v4
