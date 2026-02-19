@@ -2,7 +2,7 @@ name: Deploy Ezer System
 
 on:
   push:
-    branches: ["main"] # וודא שזה שם הענף שלך (main או master)
+    branches: ["main"]
 
 permissions:
   contents: read
@@ -21,47 +21,40 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4  # שודרג ל-v4
 
       - name: Locate and Inject API Key
         env:
           THE_SECRET: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          echo "🔍 Searching for config.js..."
-          # מוצא את הקובץ לא משנה באיזו תיקייה הוא נמצא
           FILE_PATH=$(find . -name "config.js" -type f | head -n 1)
 
           if [ -z "$FILE_PATH" ]; then
-            echo "❌ Error: config.js file not found anywhere in the repository!"
+            echo "❌ Error: config.js file not found!"
             exit 1
           fi
 
           echo "✅ Found config.js at: $FILE_PATH"
-          
-          # בדיקה שהפלייסהולדר קיים לפני ההחלפה
-          if grep -q "__GEMINI_KEY_PLACEHOLDER__" "$FILE_PATH"; then
-            echo "Found placeholder. Injecting key..."
-          else
-            echo "⚠️ Warning: Placeholder NOT found in $FILE_PATH. Check your spelling!"
-          fi
 
           # ביצוע ההחלפה
           sed -i "s|__GEMINI_KEY_PLACEHOLDER__|$THE_SECRET|g" "$FILE_PATH"
 
-          # וידוא סופי שההחלפה בוצעה
+          # בדיקה אם הפלייסהולדר עדיין קיים (כישלון)
           if grep -q "__GEMINI_KEY_PLACEHOLDER__" "$FILE_PATH"; then
-            echo "❌ CRITICAL ERROR: Injection failed! The placeholder is still there."
+            echo "❌ CRITICAL ERROR: Injection failed! Placeholder still exists."
             exit 1
           else
             echo "✅ SUCCESS: Key injected successfully."
           fi
 
       - name: Setup Pages
-        uses: actions/configure-pages@v3
+        uses: actions/configure-pages@v5  # שודרג ל-v5
+
       - name: Upload Artifact
-        uses: actions/upload-pages-artifact@v2
+        uses: actions/upload-pages-artifact@v3  # שודרג ל-v3 (הגרסה העדכנית ל-pages)
         with:
           path: '.'
+
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v2
+        uses: actions/deploy-pages@v4  # שודרג ל-v4
