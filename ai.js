@@ -1,154 +1,109 @@
-/**
- * ai.js - גרסה סופית ומתוקנת
- */
-
 const HybridAI = {
-    mode: 'offline', // ברירת מחדל
-    
-    // פונקציית האתחול הראשית
+    mode: 'offline',
+
     init() {
-        console.log("🚀 AI System: מתחיל אתחול...");
+        console.log("🚀 AI: מאתחל מערכת...");
 
-        // 1. וידוא שהאלמנטים קיימים
+        // 1. תיקון כוחני לתצוגת הכפתור (CSS Fix)
         const btnContainer = document.getElementById('ai-bubble-container');
-        const chatWindow = document.getElementById('ai-chat-window');
-
-        if (!chatWindow) {
-            console.error("❌ שגיאה: חלון הצ'אט לא נמצא ב-HTML.");
-            return;
-        }
-
-        // 2. הצגת כפתור הבועה
         if (btnContainer) {
             btnContainer.classList.remove('hidden-screen', 'hidden');
             btnContainer.style.display = 'block';
-            btnContainer.style.pointerEvents = 'auto'; // וידוא שאפשר ללחוץ
+            btnContainer.style.zIndex = '99999';
         }
 
-        // 3. איפוס סטטוס ראשוני (כדי למנוע תקיעה על "טוען...")
-        this.setMode('offline'); // מתחילים באופליין כברירת מחדל
-
-        // 4. בדיקת מפתח וחיבור לרשת
-        this.checkConnectivity();
-
-        // 5. האזנה לשינויי רשת
+        // 2. בדיקת המפתח שהוזרק ע"י GitHub Actions
+        this.checkApiKey();
+        
+        // 3. הגדרת מצב רשת
         window.addEventListener('online', () => this.handleNetworkChange(true));
         window.addEventListener('offline', () => this.handleNetworkChange(false));
 
-        // 6. חשיפת פונקציית הטוגל לחלון הגלובלי (למקרה שה-HTML קורא לה)
+        // 4. חשיפת הפונקציה לחלון (בשביל הכפתור ב-HTML)
         window.toggleChatWindow = () => this.toggleChat();
-
-        console.log("✅ AI System: אתחול הסתיים.");
     },
 
-    // בדיקה האם יש מפתח API תקין
     checkApiKey() {
         const key = window.GEMINI_API_KEY;
-        
-        // בדיקות תקינות למפתח
+        console.log("🔍 AI Debug: בודק מפתח API...");
+
         if (!key) {
-            console.warn("⚠️ AI: לא מוגדר משתנה GEMINI_API_KEY בקובץ config.js");
+            console.error("❌ מפתח חסר לחלוטין (undefined).");
+            this.setOffline("מפתח לא נמצא");
             return false;
         }
+
+        // בדיקה האם ה-Workflow הצליח להחליף את המפתח
         if (key.includes('PLACEHOLDER') || key.includes('__GEMINI')) {
-            console.warn("⚠️ AI: המפתח הוא עדיין Placeholder. נא להחליף למפתח אמיתי.");
-            // הוספת הודעה למשתמש בצ'אט
+            console.warn("⚠️ המפתח הוא עדיין Placeholder. ההזרקה ב-GitHub נכשלה.");
+            this.setOffline("הגדרת המפתח נכשלה (Placeholder)");
+            
+            // הודעה למשתמש בצ'אט
             setTimeout(() => {
-                const msgContainer = document.getElementById('ai-messages');
-                if (msgContainer && msgContainer.children.length === 0) {
-                    this.addMsg("<b>שים לב:</b> לא הגדרת מפתח API של Gemini בקובץ config.js.<br>המערכת עובדת במצב אופליין בלבד.", 'system');
-                }
-            }, 1000);
+                this.addMsg("<b>שגיאת מערכת:</b><br>המפתח לא הוזרק בהצלחה.<br>וודא שהסוד GEMINI_API_KEY מוגדר ב-GitHub Settings.", 'system');
+            }, 2000);
             return false;
         }
+
+        // אם הגענו לפה - יש מפתח אמיתי!
+        console.log("✅ מפתח API תקין זוהה.");
+        this.setOnline();
         return true;
     },
 
-    // בדיקת חיבוריות וקביעת מצב
-    checkConnectivity() {
-        const isOnline = navigator.onLine;
-        const hasKey = this.checkApiKey();
+    setOnline() {
+        this.mode = 'online';
+        const dot = document.getElementById('ai-status-dot');
+        const text = document.getElementById('ai-status-text');
+        if (dot) dot.className = "w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse shadow-lg";
+        if (text) text.innerText = "מחובר (Gemini AI)";
+    },
 
-        if (isOnline && hasKey) {
-            this.setMode('online');
-            console.log("🟢 AI Status: אונליין (מחובר ל-Gemini)");
-        } else {
-            this.setMode('offline');
-            console.log("🔴 AI Status: אופליין (חסר מפתח או אין אינטרנט)");
-        }
+    setOffline(reason) {
+        this.mode = 'offline';
+        const dot = document.getElementById('ai-status-dot');
+        const text = document.getElementById('ai-status-text');
+        if (dot) dot.className = "w-2.5 h-2.5 rounded-full bg-red-500";
+        if (text) text.innerText = `אופליין (${reason})`;
     },
 
     handleNetworkChange(isOnline) {
-        this.checkConnectivity();
-        this.addMsg(isOnline ? "החיבור חזר." : "אין אינטרנט. עברתי למצב אופליין.", 'system');
+        if (isOnline) this.checkApiKey();
+        else this.setOffline("אין אינטרנט");
     },
 
-    // עדכון המחוון הגרפי (הנקודה הירוקה/אפורה)
-    setMode(newMode) {
-        this.mode = newMode;
-        const dot = document.getElementById('ai-status-dot');
-        const text = document.getElementById('ai-status-text');
-
-        if (dot && text) {
-            if (newMode === 'online') {
-                dot.className = "w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse shadow-lg";
-                text.innerText = "מחובר (Gemini)";
-                text.className = "text-xs font-bold text-green-400";
-            } else {
-                dot.className = "w-2.5 h-2.5 rounded-full bg-gray-400";
-                text.innerText = "אופליין (ללא מפתח/רשת)";
-                text.className = "text-xs font-bold text-gray-400";
-            }
-        }
-    },
-
-    // פונקציית פתיחה/סגירה אגרסיבית
+    // פונקציית פתיחת הצ'אט (הגרסה החזקה)
     toggleChat() {
         const w = document.getElementById('ai-chat-window');
         if (!w) return;
 
-        // בדיקה האם מוסתר
-        const isHidden = w.classList.contains('hidden') || 
-                         window.getComputedStyle(w).display === 'none';
+        const isHidden = w.classList.contains('hidden') || getComputedStyle(w).display === 'none';
 
         if (isHidden) {
-            // פתיחה
             w.classList.remove('hidden');
             w.style.display = 'flex';
-            w.style.zIndex = '999999';
-            
-            // פוקוס
-            setTimeout(() => {
-                const input = document.getElementById('ai-input');
-                if (input) input.focus();
-            }, 100);
+            w.style.zIndex = '999999'; // מעל הכל
+            setTimeout(() => document.getElementById('ai-input')?.focus(), 100);
         } else {
-            // סגירה
             w.classList.add('hidden');
             w.style.display = 'none';
         }
     },
 
-    // הוספת הודעה לחלון
     addMsg(html, role) {
         const container = document.getElementById('ai-messages');
         if (!container) return;
-
         const div = document.createElement('div');
-        if (role === 'user') {
-            div.className = "bg-indigo-600 text-white self-end p-2 px-3 rounded-lg mb-2 text-sm max-w-[85%]";
-        } else if (role === 'ai') {
-            div.className = "bg-white border text-gray-800 self-start p-2 px-3 rounded-lg mb-2 text-sm max-w-[90%] shadow-sm";
-        } else {
-            div.className = "text-center text-xs text-gray-400 my-2 italic";
-        }
-        
+        div.className = role === 'user' 
+            ? "bg-indigo-600 text-white self-end p-2 rounded-lg mb-2 text-sm max-w-[85%]" 
+            : role === 'system'
+            ? "text-center text-xs text-red-500 my-2 font-bold"
+            : "bg-white border text-gray-800 self-start p-2 rounded-lg mb-2 text-sm max-w-[90%]";
         div.innerHTML = html;
         container.appendChild(div);
         container.scrollTop = container.scrollHeight;
     },
 
-    // שליחת הודעה
     async send() {
         const inp = document.getElementById('ai-input');
         const text = inp.value.trim();
@@ -157,106 +112,47 @@ const HybridAI = {
         this.addMsg(text, 'user');
         inp.value = '';
 
-        if (this.mode === 'online') {
-            await this.processOnline(text);
-        } else {
-            this.processOffline(text);
+        if (this.mode === 'offline') {
+            setTimeout(() => this.addMsg("המערכת במצב אופליין. בדוק את הגדרות המפתח ב-GitHub.", 'ai'), 500);
+            return;
         }
-    },
 
-    // עיבוד מול גוגל (Gemini)
-    async processOnline(text) {
-        // מחיקת הודעת טעינה קודמת אם נתקעה
-        const container = document.getElementById('ai-messages');
-        const last = container.lastElementChild;
-        if(last && last.innerHTML.includes('חושב...')) last.remove();
-
-        this.addMsg(`<i class="fas fa-spinner fa-spin"></i> חושב...`, 'ai');
-
+        // שליחה לגוגל
+        this.addMsg('<i class="fas fa-spinner fa-spin"></i> מעבד...', 'ai');
+        
         try {
-            const apiKey = window.GEMINI_API_KEY;
-            
-            // בניית הקונטקסט של המערכת
             const context = {
-                view: Router?.current || 'unknown',
-                stats: Store?.data?.stats || { income: 0 },
+                view: Router?.current || 'home',
+                stats: Store?.data?.stats || {},
                 year: Store?.currentYear
             };
-
-            const prompt = `You are a helper for a Yeshiva system. Context: ${JSON.stringify(context)}. User: ${text}`;
-
-            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+            
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${window.GEMINI_API_KEY}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: `System Context: ${JSON.stringify(context)}. User Question: ${text}` }] }]
+                })
             });
 
             const data = await response.json();
             
-            // מחיקת ה"חושב..."
-            container.lastElementChild.remove();
+            // הסרת הודעת טעינה
+            const msgs = document.getElementById('ai-messages');
+            if (msgs.lastElementChild.innerHTML.includes('fa-spinner')) msgs.lastElementChild.remove();
 
-            if (data.error) {
-                throw new Error(data.error.message);
-            }
-
-            const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || "לא התקבלה תשובה.";
+            if (data.error) throw new Error(data.error.message);
             
-            // בדיקה אם יש פקודת JSON (למשל ניווט)
-            if (reply.includes('{') && reply.includes('}')) {
-                 try {
-                     const jsonMatch = reply.match(/\{.*\}/s);
-                     if (jsonMatch) {
-                         const cmd = JSON.parse(jsonMatch[0]);
-                         if (cmd.tool === 'navigate') {
-                             Router.go(cmd.view);
-                             this.addMsg(`עברתי למסך ${cmd.view}`, 'ai');
-                             return;
-                         }
-                     }
-                 } catch(e) {}
-            }
-            
-            this.addMsg(reply.replace(/\n/g, '<br>').replace(/\*\*/g, '<b>').replace(/\*/g, ''), 'ai');
+            const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || "שגיאה בקבלת תשובה.";
+            this.addMsg(reply.replace(/\n/g, '<br>').replace(/\*\*/g, '<b>'), 'ai');
 
         } catch (e) {
-            const container = document.getElementById('ai-messages');
-            if(container.lastElementChild.innerHTML.includes('חושב')) container.lastElementChild.remove();
-            
-            console.error("AI Error:", e);
-            this.addMsg(`שגיאה: ${e.message}`, 'system');
+            console.error(e);
+            this.addMsg("שגיאה בתקשורת עם ה-AI.", 'ai');
         }
-    },
-
-    // עיבוד אופליין (תשובות מוכנות מראש)
-    processOffline(text) {
-        let res = "אני במצב אופליין (חסר מפתח API).";
-        
-        if (text.includes('דוח')) res = "לדוחות, נא לגשת לתפריט 'דוחות' בתפריט הצד.";
-        else if (text.includes('שלום')) res = "שלום! המערכת עובדת, אך הבינה המלאכותית מנותקת כרגע.";
-        else if (text.includes('כסף') || text.includes('קופה')) {
-            const income = Store?.data?.stats?.income || 0;
-            res = `ההכנסות כרגע: ₪${income.toLocaleString()}`;
-        }
-
-        setTimeout(() => this.addMsg(res, 'ai'), 600);
-    },
-
-    // טיפול בקבצים
-    handleFileSelect(input) {
-        if (input.files && input.files[0]) {
-            document.getElementById('ai-file-preview').classList.remove('hidden');
-            document.getElementById('ai-file-name').innerText = input.files[0].name;
-        }
-    },
-    
-    clearFile() {
-        document.getElementById('ai-file-input').value = '';
-        document.getElementById('ai-file-preview').classList.add('hidden');
     }
 };
 
-// הפעלה אוטומטית בטעינת הדף
 document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => HybridAI.init(), 1000);
 });
