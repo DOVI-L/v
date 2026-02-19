@@ -2,7 +2,7 @@ name: Deploy Ezer System
 
 on:
   push:
-    branches: ["main"]
+    branches: ["main"] # וודא שזה שם הענף שלך (main או master)
 
 permissions:
   contents: read
@@ -23,22 +23,37 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v3
 
-      # הזרקה + בדיקה שההזרקה עבדה
-      - name: Inject Gemini API Key
+      - name: Locate and Inject API Key
+        env:
+          THE_SECRET: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          # הדפסת המצב לפני (לצורך דיבוג - לא מדפיס את הסוד)
-          echo "Checking config.js before injection..."
-          grep "GEMINI_KEY_PLACEHOLDER" config.js && echo "Placeholder found." || echo "Error: Placeholder NOT found!"
+          echo "🔍 Searching for config.js..."
+          # מוצא את הקובץ לא משנה באיזו תיקייה הוא נמצא
+          FILE_PATH=$(find . -name "config.js" -type f | head -n 1)
+
+          if [ -z "$FILE_PATH" ]; then
+            echo "❌ Error: config.js file not found anywhere in the repository!"
+            exit 1
+          fi
+
+          echo "✅ Found config.js at: $FILE_PATH"
+          
+          # בדיקה שהפלייסהולדר קיים לפני ההחלפה
+          if grep -q "__GEMINI_KEY_PLACEHOLDER__" "$FILE_PATH"; then
+            echo "Found placeholder. Injecting key..."
+          else
+            echo "⚠️ Warning: Placeholder NOT found in $FILE_PATH. Check your spelling!"
+          fi
 
           # ביצוע ההחלפה
-          sed -i "s|__GEMINI_KEY_PLACEHOLDER__|${{ secrets.GEMINI_API_KEY }}|g" config.js
+          sed -i "s|__GEMINI_KEY_PLACEHOLDER__|$THE_SECRET|g" "$FILE_PATH"
 
-          # בדיקה אחרי - אם הפלייסהולדר עדיין שם, תכשיל את הבנייה
-          if grep -q "__GEMINI_KEY_PLACEHOLDER__" config.js; then
-            echo "::error:: Injection failed! The placeholder is still in the file."
+          # וידוא סופי שההחלפה בוצעה
+          if grep -q "__GEMINI_KEY_PLACEHOLDER__" "$FILE_PATH"; then
+            echo "❌ CRITICAL ERROR: Injection failed! The placeholder is still there."
             exit 1
           else
-            echo "Success: Placeholder replaced."
+            echo "✅ SUCCESS: Key injected successfully."
           fi
 
       - name: Setup Pages
